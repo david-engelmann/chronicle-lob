@@ -1,0 +1,9 @@
+# Pinned toolchain for chronicle-lob.
+# DECISIONS.md Q4: Rust 2024 edition, latest stable toolchain, pinned here.
+# 1.99.1 is the latest stable release at Milestone 0 (2026-11-12).
+# Bumping this pin is a reviewed change. CI installs exactly this toolchain
+# and the committed Cargo.lock (from Milestone 1 onward) is built with it.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

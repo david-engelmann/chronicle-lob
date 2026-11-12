@@ -1,0 +1,188 @@
+name: CI
+
+# Gate layout for chronicle-lob. See docs/ARCHITECTURE.md section 9 and
+# CONTRIBUTING.md (Milestone 4) for the local equivalents.
+#
+# Milestone 0 note: this commit contains no Cargo.toml and no Rust sources
+# yet, by design. Every cargo job below first checks for the workspace
+# manifest. Until Milestone 1 lands it, the job reports the skip plainly and
+# passes. From Milestone 1 onward the guard is inert and every gate runs at
+# full strength. The guard never weakens a gate once sources exist.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  # Determinism contract: every simulation and property run prints its seed.
+  # PR runs use seed 42 with 1,000 proptest cases. Main runs use the wider
+  # sweep in the seed-sweep job below (DECISIONS.md Q6).
+  SIM_SEED: "42"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check workspace presence
+        id: ws
+        run: |
+          if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
+      - name: cargo fmt --check
+        if: steps.ws.outputs.present == 'true'
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy (pedantic, nursery, deny todo/unimplemented)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check workspace presence
+        id: ws
+        run: |
+          if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
+      - name: cargo clippy --workspace --all-targets --all-features
+        if: steps.ws.outputs.present == 'true'
+        run: >-
+          cargo clippy --workspace --all-targets --all-features --
+          -D warnings
+
+  test:
+    name: test (PR volume, 1,000 cases)
+    runs-on: ubuntu-latest
+    env:
+      PROPTEST_CASES: "1000"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check workspace presence
+        id: ws
+        run: |
+          if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
+      - name: cargo test --workspace
+        if: steps.ws.outputs.present == 'true'
+        run: |
+          echo "SIM_SEED=$SIM_SEED PROPTEST_CASES=$PROPTEST_CASES"
+          cargo test --workspace
+
+  seed-sweep:
+    name: seed sweep (main volume, 10,000 cases)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      PROPTEST_CASES: "10000"
+      SIM_SEED: "10000"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check workspace presence
+        id: ws
+        run: |
+          if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
+      - name: cargo test --workspace (full seed sweep)
+        if: steps.ws.outputs.present == 'true'
+        run: |
+          echo "SIM_SEED=$SIM_SEED PROPTEST_CASES=$PROPTEST_CASES"
+          cargo test --workspace
+
+  doc:
+    name: rustdoc (-D warnings)
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check workspace presence
+        id: ws
+        run: |
+          if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
+      - name: cargo doc --workspace --no-deps
+        if: steps.ws.outputs.present == 'true'
+        run: cargo doc --workspace --no-deps
+
+  bench-compile:
+    name: bench compile check (cargo bench -- --test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check workspace presence
+        id: ws
+        run: |
+          if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
+      - name: cargo bench --workspace -- --test
+        if: steps.ws.outputs.present == 'true'
+        run: cargo bench --workspace -- --test
+
+  zero-dep-core:
+    name: chronicle-core stays std-only and zero-dependency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check workspace presence
+        id: ws
+        run: |
+          if [ -f crates/chronicle-core/Cargo.toml ]; then
+          echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No core crate yet (Milestone 0). Skipping."; fi
+      - name: Assert no non-dev dependencies in chronicle-core
+        if: steps.ws.outputs.present == 'true'
+        run: |
+          python3 - <<'PY'
+          import re, sys
+          text = open("crates/chronicle-core/Cargo.toml").read()
+          # Strip the dev-dependencies and build-dependencies sections.
+          kept, skip = [], False
+          for line in text.splitlines():
+              m = re.match(r"\s*\[([^\]]+)\]", line)
+              if m:
+                  skip = m.group(1).strip() in (
+                      "dev-dependencies", "build-dependencies")
+              if not skip:
+                  kept.append(line)
+          body = "\n".join(kept)
+          m = re.search(r"(?ms)^\[dependencies\]\s*\n(.*?)(?=^\[|\Z)", body)
+          deps = ""
+          if m:
+              deps = "\n".join(
+                  l for l in m.group(1).splitlines()
+                  if l.strip() and not l.strip().startswith("#"))
+          if deps.strip():
+              print("chronicle-core has non-dev dependencies:")
+              print(deps)
+              sys.exit(1)
+          print("chronicle-core: zero non-dev dependencies. OK.")
+          PY
