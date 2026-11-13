@@ -50,8 +50,8 @@ impl Side {
 }
 
 /// Order type, with time in force folded in (ARCHITECTURE.md section
-/// 3.3). Milestone 1 executes [`OrderType::Limit`]; the other variants
-/// are part of the locked type contract and execute from Milestone 2.
+/// 3.3). Every variant executes; the types differ only in the
+/// section 7.3 remainder rules.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OrderType {
     /// Rest any unfilled remainder on the book.
@@ -65,8 +65,7 @@ pub enum OrderType {
 }
 
 /// Self-trade prevention policy, carried by the incoming order with a
-/// book-level default (ARCHITECTURE.md section 7.5). Executes from
-/// Milestone 2; defined now because it is part of `BookConfig`.
+/// book-level default (ARCHITECTURE.md section 7.5).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum StpPolicy {
     /// Cancel the incoming order remainder at the first own resting

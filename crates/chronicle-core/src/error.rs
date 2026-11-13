@@ -4,7 +4,7 @@
 
 use core::fmt;
 
-use crate::types::{OrderId, OrderType};
+use crate::types::OrderId;
 
 /// Errors returned by book construction and by every book command.
 ///
@@ -103,13 +103,6 @@ pub enum BookError {
         /// What was being computed when the overflow was detected.
         what: &'static str,
     },
-    /// The order type is part of the locked contract but its execution
-    /// lands in a later milestone (Milestone 2). Milestone 1 executes
-    /// Limit orders only.
-    UnsupportedOrderType {
-        /// The order type that was supplied.
-        order_type: OrderType,
-    },
 }
 
 impl fmt::Display for BookError {
@@ -185,12 +178,6 @@ impl fmt::Display for BookError {
             ),
             Self::ArithmeticOverflow { what } => {
                 write!(f, "arithmetic overflow while computing {what}")
-            }
-            Self::UnsupportedOrderType { order_type } => {
-                write!(
-                    f,
-                    "order type {order_type:?} is not executed in this milestone"
-                )
             }
         }
     }

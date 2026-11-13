@@ -349,7 +349,11 @@ The Book exposes one method per command. Each takes a caller-owned
 EventBuffer (section 7.6) and returns Result<usize, BookError>, the
 number of events written.
 
-- add_order(order_id, participant, side, order_type, price, qty, stp, events)
+- add_order(order_id, participant, side, order_type, price, qty, stp, events):
+  in the typed API `stp` is `Option<StpPolicy>`, where `None` selects
+  `BookConfig.default_stp` (section 3.3). (Milestone 2 sync: the
+  Milestone 1 interim signature omitted this parameter; it is restored
+  at its documented position.)
 - cancel_order(order_id, events)
 - cancel_by_participant(participant, events)
 - amend_order(order_id, new_price, new_qty, events)
@@ -378,13 +382,21 @@ could do:
   STP would cancel do not count as executable).
 - For every order type: the worst-case event count of the match, found
   by a read-only walk of the levels and orders the sweep would touch.
-  The bound is exact for Limit: one Trade event per resting order
-  touched, one Filled event per resting order the sweep would fully
-  fill, and one terminal event for the incoming order. If the
-  EventBuffer has fewer free slots than the bound, return
-  EventBufferFull before mutating.
+  The bound is exact for every order type (Milestone 2 entry condition
+  m3): one Trade event per resting order the sweep trades with, one
+  Filled event per resting order the sweep would fully fill, one
+  Cancelled event per resting order STP would cancel, and one terminal
+  event for the incoming order (Accepted, Filled, Expired, or
+  SelfTradePrevented). A PostOnly add never sweeps, so its bound is 1;
+  cancel and amend are 1; cancel_by_participant is the participant's
+  live order count. If the EventBuffer has fewer free slots than the
+  bound, return EventBufferFull before mutating. Semantic rejections
+  (a crossing PostOnly, a Fok shortfall, a crossing amend) are decided
+  before the buffer bound, because those commands would write no
+  events at all.
 - Capacity, for an order that would rest a remainder: a free slot must
-  exist after the sweep, counting the slots the sweep itself frees.
+  exist after the sweep, counting the slots the sweep itself frees
+  (makers it fills plus resting orders STP cancels).
   An order that fills completely needs no slot and is never rejected
   for capacity. (Milestone 1 sync: this check lives in preflight, not
   phase 1, because only the sweep walk knows whether a remainder
