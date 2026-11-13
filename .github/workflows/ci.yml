@@ -3,11 +3,12 @@ name: CI
 # Gate layout for chronicle-lob. See docs/ARCHITECTURE.md section 9 and
 # CONTRIBUTING.md (Milestone 4) for the local equivalents.
 #
-# Milestone 0 note: this commit contains no Cargo.toml and no Rust sources
-# yet, by design. Every cargo job below first checks for the workspace
-# manifest. Until Milestone 1 lands it, the job reports the skip plainly and
-# passes. From Milestone 1 onward the guard is inert and every gate runs at
-# full strength. The guard never weakens a gate once sources exist.
+# History: at Milestone 0 this repo contained no Cargo.toml and no Rust
+# sources yet, by design, and every cargo job first checked for the
+# workspace manifest and reported the skip plainly. Milestone 1 landed
+# the workspace, so the guards are inert and every gate runs at full
+# strength. The guards stay as harmless no-ops; they never weaken a
+# gate now that sources exist.
 
 on:
   push:
@@ -60,10 +61,10 @@ jobs:
           if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
           else echo "present=false" >> "$GITHUB_OUTPUT";
           echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
-      - name: cargo clippy --workspace --all-targets --all-features
+      - name: cargo clippy --workspace --all-targets --all-features --locked
         if: steps.ws.outputs.present == 'true'
         run: >-
-          cargo clippy --workspace --all-targets --all-features --
+          cargo clippy --workspace --all-targets --all-features --locked --
           -D warnings
 
   test:
@@ -81,11 +82,11 @@ jobs:
           if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
           else echo "present=false" >> "$GITHUB_OUTPUT";
           echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
-      - name: cargo test --workspace
+      - name: cargo test --workspace --locked
         if: steps.ws.outputs.present == 'true'
         run: |
           echo "SIM_SEED=$SIM_SEED PROPTEST_CASES=$PROPTEST_CASES"
-          cargo test --workspace
+          cargo test --workspace --locked
 
   seed-sweep:
     name: seed sweep (main volume, 10,000 cases)
@@ -104,11 +105,11 @@ jobs:
           if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
           else echo "present=false" >> "$GITHUB_OUTPUT";
           echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
-      - name: cargo test --workspace (full seed sweep)
+      - name: cargo test --workspace --locked (full seed sweep)
         if: steps.ws.outputs.present == 'true'
         run: |
           echo "SIM_SEED=$SIM_SEED PROPTEST_CASES=$PROPTEST_CASES"
-          cargo test --workspace
+          cargo test --workspace --locked
 
   doc:
     name: rustdoc (-D warnings)
@@ -125,9 +126,9 @@ jobs:
           if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
           else echo "present=false" >> "$GITHUB_OUTPUT";
           echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
-      - name: cargo doc --workspace --no-deps
+      - name: cargo doc --workspace --no-deps --locked
         if: steps.ws.outputs.present == 'true'
-        run: cargo doc --workspace --no-deps
+        run: cargo doc --workspace --no-deps --locked
 
   bench-compile:
     name: bench compile check (cargo bench -- --test)
@@ -142,15 +143,17 @@ jobs:
           if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
           else echo "present=false" >> "$GITHUB_OUTPUT";
           echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
-      - name: cargo bench --workspace -- --test
+      - name: cargo bench --workspace --locked -- --test
         if: steps.ws.outputs.present == 'true'
-        run: cargo bench --workspace -- --test
+        run: cargo bench --workspace --locked -- --test
 
   zero-dep-core:
     name: chronicle-core stays std-only and zero-dependency
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Check workspace presence
         id: ws
         run: |
@@ -158,31 +161,68 @@ jobs:
           echo "present=true" >> "$GITHUB_OUTPUT";
           else echo "present=false" >> "$GITHUB_OUTPUT";
           echo "No core crate yet (Milestone 0). Skipping."; fi
-      - name: Assert no non-dev dependencies in chronicle-core
+      # Audit m4 (accepted at Milestone 1): assert on cargo's own
+      # metadata, not on a text parse of the manifest. A dependency
+      # counts unless cargo reports its kind as dev or build.
+      - name: Assert no non-dev dependencies in chronicle-core (cargo metadata)
+        if: steps.ws.outputs.present == 'true'
+        run: |
+          cargo metadata --format-version 1 --locked --no-deps > /tmp/meta.json
+          python3 - <<'PY'
+          import json, sys
+          meta = json.load(open("/tmp/meta.json"))
+          core = [p for p in meta["packages"] if p["name"] == "chronicle-core"]
+          if not core:
+              print("chronicle-core package not found in cargo metadata")
+              sys.exit(1)
+          bad = [d["name"] for d in core[0]["dependencies"]
+                 if d["kind"] not in ("dev", "build")]
+          if bad:
+              print("chronicle-core has non-dev dependencies:", bad)
+              sys.exit(1)
+          print("chronicle-core: zero non-dev dependencies (cargo metadata). OK.")
+          PY
+
+  determinism-gate:
+    name: determinism gate (INV-DET-1 forbidden tokens in core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check core sources presence
+        id: ws
+        run: |
+          if [ -d crates/chronicle-core/src ]; then
+          echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No core sources yet (Milestone 0). Skipping."; fi
+      # INV-DET-1: chronicle-core sources must not mention wall clock,
+      # process-seeded randomness, or std hash-map types. The reference
+      # oracle module is excluded by design; it uses BTreeMap only.
+      - name: Scan chronicle-core sources for forbidden tokens
         if: steps.ws.outputs.present == 'true'
         run: |
           python3 - <<'PY'
-          import re, sys
-          text = open("crates/chronicle-core/Cargo.toml").read()
-          # Strip the dev-dependencies and build-dependencies sections.
-          kept, skip = [], False
-          for line in text.splitlines():
-              m = re.match(r"\s*\[([^\]]+)\]", line)
-              if m:
-                  skip = m.group(1).strip() in (
-                      "dev-dependencies", "build-dependencies")
-              if not skip:
-                  kept.append(line)
-          body = "\n".join(kept)
-          m = re.search(r"(?ms)^\[dependencies\]\s*\n(.*?)(?=^\[|\Z)", body)
-          deps = ""
-          if m:
-              deps = "\n".join(
-                  l for l in m.group(1).splitlines()
-                  if l.strip() and not l.strip().startswith("#"))
-          if deps.strip():
-              print("chronicle-core has non-dev dependencies:")
-              print(deps)
+          import pathlib, sys
+          forbidden = ["SystemTime", "Instant::now", "thread_rng",
+                       "RandomState", "HashMap", "HashSet"]
+          excluded = {"reference_book.rs"}
+          hits = []
+          root = pathlib.Path("crates/chronicle-core/src")
+          for path in sorted(root.rglob("*.rs")):
+              if path.name in excluded:
+                  continue
+              text = path.read_text()
+              for token in forbidden:
+                  start = 0
+                  while True:
+                      i = text.find(token, start)
+                      if i < 0:
+                          break
+                      hits.append(f"{path}:{text[:i].count(chr(10)) + 1}: {token}")
+                      start = i + 1
+          if hits:
+              print("Forbidden determinism tokens found in chronicle-core:")
+              print("\n".join(hits))
               sys.exit(1)
-          print("chronicle-core: zero non-dev dependencies. OK.")
+          print("chronicle-core: no forbidden determinism tokens. OK.")
           PY

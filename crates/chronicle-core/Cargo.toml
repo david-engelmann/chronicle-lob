@@ -1,0 +1,20 @@
+[package]
+name = "chronicle-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.100"
+description = "Single-threaded deterministic limit order book and matching engine with zero steady-state allocation"
+license = "MIT OR Apache-2.0"
+keywords = ["orderbook", "matching-engine", "trading", "deterministic"]
+categories = ["data-structures", "finance"]
+repository = "https://github.com/david-engelmann/chronicle-lob"
+
+# DECISIONS.md Q5: chronicle-core is strictly std-only. This section stays
+# empty forever. CI asserts it from cargo metadata (zero-dep-core job).
+[dependencies]
+
+[dev-dependencies]
+proptest = "1"
+
+[lints]
+workspace = true

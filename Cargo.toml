@@ -1,0 +1,27 @@
+# chronicle-lob workspace.
+# Members join per milestone: chronicle-core (M1), chronicle-wal (M3),
+# chronicle-cli (M4). See docs/ARCHITECTURE.md section 2.
+[workspace]
+resolver = "3"
+members = ["crates/chronicle-core"]
+
+# Lint posture: docs/ARCHITECTURE.md section 2.4. Crates opt in with
+# [lints] workspace = true in their own Cargo.toml.
+[workspace.lints.rust]
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "deny"
+nursery = "deny"
+todo = "deny"
+unimplemented = "deny"
+allow_attributes_without_reason = "deny"
+
+# Checked arithmetic must hold in tests exactly as in release: a wrap in
+# a test is a failure, never a silent pass (INV-MATH-1).
+[profile.dev]
+overflow-checks = true
+
+[profile.test]
+overflow-checks = true

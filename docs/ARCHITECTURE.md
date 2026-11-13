@@ -366,8 +366,8 @@ mutate book state, which is what makes every rejection atomic.
 
 Phase 1, validation. Reject, with the typed error and zero mutation of
 book, bitmap, lookup, arena, or seq, on: zero or duplicate active
-OrderId, zero quantity, invalid price tick, arena at capacity, lookup
-table at its load cap.
+OrderId, zero quantity, invalid price tick, lookup table at its load
+cap.
 
 Phase 2, preflight. Compute, without mutating, everything the command
 could do:
@@ -378,10 +378,17 @@ could do:
   STP would cancel do not count as executable).
 - For every order type: the worst-case event count of the match, found
   by a read-only walk of the levels and orders the sweep would touch.
-  Worst case is one Trade event per resting order touched, plus one
-  event per terminal or lifecycle outcome of the incoming order and of
-  each touched resting order, plus 1. If the EventBuffer has fewer free
-  slots than the bound, return EventBufferFull before mutating.
+  The bound is exact for Limit: one Trade event per resting order
+  touched, one Filled event per resting order the sweep would fully
+  fill, and one terminal event for the incoming order. If the
+  EventBuffer has fewer free slots than the bound, return
+  EventBufferFull before mutating.
+- Capacity, for an order that would rest a remainder: a free slot must
+  exist after the sweep, counting the slots the sweep itself frees.
+  An order that fills completely needs no slot and is never rejected
+  for capacity. (Milestone 1 sync: this check lives in preflight, not
+  phase 1, because only the sweep walk knows whether a remainder
+  rests.)
 
 Phase 3, execution. Assign the seq, append nothing yet, run the match
 loop of section 7.3, then emit the lifecycle events in the fixed order
@@ -481,14 +488,20 @@ lifecycle event (Accepted if it rests, Filled, Expired, or
 SelfTradePrevented), then the command-level outcome. Tests compare full
 event streams, never samples.
 
-EventBuffer is a caller-owned view over a pre-allocated slice:
-EventBuffer::new(&mut [ExecutionEvent]) in the typed API, with len and
-remaining capacity tracked by the buffer itself. The engine writes only
-into this buffer. If preflight finds the buffer too small for the
-worst case, the command returns EventBufferFull { needed, available }
-before mutating anything, including seq. The caller can retry the
-identical command with a larger buffer and get the identical result,
-which the property tests assert (INV-EVENT-2).
+EventBuffer is a caller-owned sink over a pre-allocated vector:
+EventBuffer::new(&mut Vec<ExecutionEvent>) in the typed API. The
+caller's vector carries spare capacity reserved ahead of time; the
+buffer tracks how many events were written through it, and its
+remaining capacity is the vector's spare capacity. The engine writes
+only through this buffer, and preflight has already proved the spare
+capacity covers the worst case, so a write never grows the vector.
+If preflight finds the spare capacity too small, the command returns
+EventBufferFull { needed, available } before mutating anything,
+including seq. The caller can retry the identical command with a
+larger buffer and get the identical result, which the property tests
+assert (INV-EVENT-2). (Milestone 1 sync: the buffer borrows a Vec
+rather than a raw slice, because a slice of events would force the
+caller to pre-fill dummy events; the capacity contract is unchanged.)
 
 ### 7.7 L2 depth queries
 
