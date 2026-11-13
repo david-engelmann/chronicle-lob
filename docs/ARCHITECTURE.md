@@ -131,6 +131,13 @@ BookConfig fields, all validated at construction:
 | grid_start_tick | u64 | The tick value of grid index 0. Price tick t maps to index t - grid_start_tick. |
 | default_stp | StpPolicy | Self-trade prevention policy applied when a command does not name one. |
 
+Construction validates the grid arithmetic itself before anything is
+allocated: grid_start_tick + grid_len, computed with checked_add after
+widening grid_len to u64, must not overflow u64. A configuration whose
+grid end overflows is rejected at construction as a config error, so
+every later comparison of a tick against the grid end is overflow-free
+by construction and needs no per-call check.
+
 A raw price p is valid when all of these hold: p is not zero, p is an
 exact multiple of tick_size, and tick = p / tick_size satisfies
 grid_start_tick <= tick < grid_start_tick + grid_len. Any failure is
@@ -186,8 +193,13 @@ next column of free slots. Release pushes the slot back onto the head of
 the free list. Both operations are O(1) and branch-light.
 
 Release zeroes the slot before linking it into the free list:
-order_id, participant, price_idx, qty, side, prev, and next are all set
-to their zero or NIL values and state is set to free. Zeroing is a
+order_id, participant, price_idx, qty, and side are set to zero, prev
+is set to NIL, and state is set to free. The one field that then
+carries a value is next, which the release itself writes with the free
+list link (the previous free head, or NIL when the free list was
+empty). That link is list plumbing, never order data, so no stale
+order data is observable in a free slot. This is INV-ARENA-2 stated in
+the same terms. Zeroing is a
 correctness measure, not hygiene: it makes stale data unobservable to the
 invariant checker, makes snapshot bytes deterministic for free slots,
 and turns use-after-release bugs in the engine into immediate assertion
@@ -537,6 +549,16 @@ for any permitted grid and quantity: the largest product is below
 Debug and release builds run the same checked arithmetic; there is no
 release-only wrap path.
 
+Ownership of those cumulative counters is settled here: they are
+caller-side state, not Book state. The engine retains no running
+totals, because every Trade event carries its price and quantity and
+any total is a fold over the event stream. Callers that want running
+volume or notional (CLI reports, benchmarks) accumulate in u128 on
+their side of the API. That is why the counters appear in no snapshot
+field inventory (section 10.2): there is nothing to persist, and
+replay reproduces them exactly by re-accumulating over the reproduced
+event stream.
+
 ## 9. Write-ahead log
 
 chronicle-wal persists commands, not events. Recovery replays commands
@@ -642,8 +664,8 @@ The reader scans frames from offset 0 and classifies every stop:
 | Condition at the current offset | Verdict |
 | --- | --- |
 | Offset equals file length exactly | Clean end of log. |
-| Fewer than 32 bytes remain | Clean crash boundary. The trailing partial header is a torn write. Discarded byte count is reported. |
-| At least 4 bytes remain and the magic does not match | CorruptWalRecord { offset }. A torn write cannot produce this: the writer emits the header in one write_all, so a crash leaves a prefix of a correct header, never wrong magic bytes. Wrong magic means foreign or overwritten data. |
+| Fewer than 32 bytes remain, and every fixed-value byte present matches the value a valid header carries at that position | Clean crash boundary. The trailing fragment is a prefix of a valid header, cut off by a torn write. Discarded byte count is reported. Fixed-value positions are: magic at bytes 0..4, version at bytes 4..6 (value 1), header_len at bytes 6..8 (value 32), flags at byte 21 (value 0), and the reserved fields at bytes 22..28 (value 0). Variable positions (seq, payload_len, kind payload semantics, CRC) constrain nothing in a fragment, except that a kind byte present at byte 20 must be a known kind value. |
+| Fewer than 32 bytes remain, and any fixed-value byte present mismatches, or at least 4 bytes remain and the magic does not match | CorruptWalRecord { offset }. A torn write cannot produce this: the writer emits the header in one write_all, so a crash leaves a prefix of a correct header, never wrong fixed bytes. A mismatch in any present fixed byte means foreign or overwritten data, at any fragment length, including fragments under 4 bytes (a wrong first byte is already decisive). |
 | Magic matches but fewer than 32 + payload_len bytes remain | Clean crash boundary. Torn payload. |
 | version is not 1, header_len is not 32, payload_len exceeds the cap, payload_len does not match the kind fixed width, kind is unknown, or a reserved field is non-zero | CorruptWalRecord { offset } with the specific field in the error message. |
 | CRC mismatch on a complete frame | CorruptWalRecord { offset, expected_crc, actual_crc }. A complete frame with a bad CRC is corruption, never a crash boundary, because the writer only reports success after the full frame is written. |
@@ -651,10 +673,14 @@ The reader scans frames from offset 0 and classifies every stop:
 
 The single subtle case is a torn write that lands exactly on a frame
 boundary plus a partial header whose first bytes were never flushed:
-that is the fewer-than-32-bytes case and it is clean by rule. The
-inverse case, garbage appended by something other than the writer, is
-caught by the magic rule. This table is the whole disambiguation policy
-and the fault oracle tests exercise every row (INV-WAL-2).
+that is the fewer-than-32-bytes case, and it is clean only when every
+fixed-value byte that did land matches a valid header prefix, per the
+second row of the table. Garbage appended by something other than the
+writer fails that same prefix test at whatever length it appears,
+including a fragment too short to hold the full magic. This table is
+the whole disambiguation policy and the fault oracle tests exercise
+every row, including short fragments with single wrong bytes
+(INV-WAL-2).
 
 ### 9.6 What the WAL does not store
 
@@ -670,10 +696,18 @@ stored; it is reproduced by replay.
 
 A snapshot is a structural dump of the book at a seq boundary, not a
 re-serialisation through the command API. It stores the arena columns
-for live slots, the generations of all slots, the level arrays, the
-configuration, and next_seq, so that restore reproduces the internal
-state exactly, including slot assignment and FIFO list links. Section
-10.4 explains why nothing weaker is acceptable.
+for live slots, the generations of all slots, the free list head and
+every free slot link, the level arrays, the configuration, and
+next_seq, so that restore reproduces the internal state exactly,
+including slot assignment, FIFO list links, and the exact free list,
+which fixes allocation order after restore. Section 10.4 explains why
+nothing weaker is acceptable.
+
+One deliberate exclusion: the cumulative traded volume and notional
+counters of section 8.2 are caller-side accumulations over the event
+stream, not Book state, so they are stored nowhere in this format and
+restored nowhere. Replay reproduces them exactly by re-accumulating
+over the reproduced event stream.
 
 ### 10.2 File layout
 
@@ -694,16 +728,27 @@ Header, 64 bytes:
 | 40 | 8 | grid_start_tick | u64. |
 | 48 | 4 | grid_len | u32. |
 | 52 | 4 | default_stp | u8 value stored in a u32 slot for alignment, plus zero padding. |
-| 56 | 8 | reserved | u64, zero. |
+| 56 | 4 | free_list_head | u32, SlotIdx of the first free slot in allocation order, or NIL (u32::MAX) when the arena is full. |
+| 60 | 4 | reserved | u32, zero. |
 
 Body, in fixed order:
 
 1. Generations: max_orders u32 values, slot order, covering free and
    live slots alike. Free slot generations must persist, or a handle
    captured before the snapshot could validate after restore.
-2. Level arrays, in tick index order, each entry 20 bytes: head u32,
+2. Free list links: max_orders u32 values, slot order. For a free
+   slot, the value is the SlotIdx of the next free slot in allocation
+   order, or NIL for the last free slot. For a live slot, the value
+   must be NIL; anything else is CorruptSnapshot. Together with
+   free_list_head in the header, this section persists the exact free
+   list, so allocation order after restore is identical to allocation
+   order at snapshot time. The live free list is LIFO (most recently
+   released slot is allocated first, section 4.2); rebuilding it in
+   any canonical order, such as ascending slot order, would change
+   which slot the next add takes and is therefore not a valid restore.
+3. Level arrays, in tick index order, each entry 20 bytes: head u32,
    tail u32, level_qty u64, level_count u32.
-3. Live slot records, ascending SlotIdx, each 56 bytes: slot u32,
+4. Live slot records, ascending SlotIdx, each 56 bytes: slot u32,
    generation u32, order_id u64, participant u32, price_idx u32,
    qty u64, side u8, state byte (must be live), 6 bytes zero padding,
    prev u32, next u32, reserved u64 zero. Width check:
@@ -716,9 +761,11 @@ Body, in fixed order:
 Trailer: crc32c u32 over the domain prefix "chronicle-snapshot/v1" plus
 one zero byte, then every preceding byte of the file, header and body.
 
-Total size is exactly 64 + 4 * max_orders + 20 * grid_len +
-56 * live_order_count + 4. A size mismatch against the header values is
-CorruptSnapshot before any state is built.
+Total size is exactly 64 + 4 * max_orders (generations) +
+4 * max_orders (free list links) + 20 * grid_len +
+56 * live_order_count + 4, which is 68 + 8 * max_orders +
+20 * grid_len + 56 * live_order_count. A size mismatch against the
+header values is CorruptSnapshot before any state is built.
 
 ### 10.3 Atomic write protocol
 
@@ -750,23 +797,35 @@ finally the trailing CRC. CRC failure is CorruptSnapshot { expected_crc,
 actual_crc }. No partial state escapes a failed load: restore builds a
 fresh Book and returns it only on full success.
 
-Restore then: copies generations for all slots, rebuilds the free list
-as exactly the slots with no live record (linked in ascending slot
-order, a canonical order that makes post-restore allocation order
-deterministic), writes live records into the arena columns including
-their prev and next links, restores level arrays verbatim, rebuilds the
-lookup table by inserting live orders in ascending SlotIdx order,
-recomputes the bitmaps from level_count, and asserts the recomputed
-bitmaps equal the bitmaps derived from the level data, then sets
-next_seq from the header.
+Restore then: copies generations for all slots, restores the free
+list verbatim (free_list_head from the header, each link from the free
+list body section) and validates it before any allocation can use it:
+the chain from the head must visit exactly the slots with no live
+record, each exactly once, with no cycles, and every live slot link
+field must be NIL, otherwise the load fails as CorruptSnapshot and no
+state escapes. It then writes live records into the arena columns
+including their prev and next links, restores level arrays verbatim,
+rebuilds the lookup table by inserting live orders in ascending
+SlotIdx order, recomputes the bitmaps from level_count, and asserts
+the recomputed bitmaps equal the bitmaps derived from the level data,
+then sets next_seq from the header.
 
-Exactness matters for one concrete reason: cancel_by_participant emits
-events in ascending SlotIdx order (section 7.8). A restore that
-renumbered slots or rebuilt FIFO order from a traversal would produce a
-different event order for the first mass cancel after recovery, and the
-snapshot plus WAL replay equivalence property (INV-SNAP-3) compares full
-event streams byte for byte. Structural dump plus verbatim restore is
-the design that makes that property true by construction.
+Exactness matters for two concrete reasons, both about SlotIdx order.
+First, cancel_by_participant emits events in ascending SlotIdx order
+(section 7.8). A restore that renumbered slots or rebuilt FIFO order
+from a traversal would produce a different event order for the first
+mass cancel after recovery, and the snapshot plus WAL replay
+equivalence property (INV-SNAP-3) compares full event streams byte for
+byte. Second, allocation order is SlotIdx order over time. The live
+free list is LIFO, so the next slot an add takes depends on release
+history. A restore that rebuilt the free list in ascending slot order
+would hand out different slots than the no-snapshot run from the first
+post-restore add onward, every later SlotIdx would diverge, and a mass
+cancel after those adds could emit a different event order even though
+every order field matched. Persisting free_list_head and every free
+slot link (section 10.2) removes that divergence. Structural dump plus
+verbatim restore, free list included, is the design that makes
+INV-SNAP-3 true by construction.
 
 WAL continuity after a snapshot: replay skips frames with
 seq <= last_included_seq, requires the first replayed frame to have
