@@ -310,8 +310,8 @@ impl Book {
                 available: events.remaining(),
             });
         }
-        let target_base = self.levels.qty[new_idx as usize]
-            - if new_idx == old_idx { old_qty } else { 0 };
+        let target_base =
+            self.levels.qty[new_idx as usize] - if new_idx == old_idx { old_qty } else { 0 };
         if target_base.checked_add(new_qty).is_none() {
             return Err(BookError::ArithmeticOverflow {
                 what: "price level quantity",
@@ -632,7 +632,15 @@ impl Book {
         events: &mut EventBuffer<'_>,
     ) -> Result<usize, BookError> {
         if order_type == OrderType::PostOnly {
-            return self.execute_post_only(order_id, participant, side, price, price_idx, qty, events);
+            return self.execute_post_only(
+                order_id,
+                participant,
+                side,
+                price,
+                price_idx,
+                qty,
+                events,
+            );
         }
         // ---- Preflight (no mutation) ----
         let plan = self.plan_sweep(side, price_idx, qty, participant, stp);
@@ -649,8 +657,7 @@ impl Book {
                 available: events.remaining(),
             });
         }
-        let will_rest =
-            order_type == OrderType::Limit && plan.remaining > 0 && !plan.stp_stopped;
+        let will_rest = order_type == OrderType::Limit && plan.remaining > 0 && !plan.stp_stopped;
         if will_rest {
             // A slot must exist once the sweep has freed the slots of
             // the makers it filled or STP-cancelled.
@@ -674,7 +681,14 @@ impl Book {
         let seq = self.take_seq()?;
         let written_before = events.written().len();
         let (remaining, stp_stopped) = self.execute_sweep(
-            order_id, participant, side, price_idx, qty, stp, seq, events,
+            order_id,
+            participant,
+            side,
+            price_idx,
+            qty,
+            stp,
+            seq,
+            events,
         );
         debug_assert_eq!(
             remaining, plan.remaining,
@@ -827,7 +841,10 @@ impl Book {
                 max_orders: self.config.max_orders,
             });
         }
-        if self.levels.qty[price_idx as usize].checked_add(qty).is_none() {
+        if self.levels.qty[price_idx as usize]
+            .checked_add(qty)
+            .is_none()
+        {
             return Err(BookError::ArithmeticOverflow {
                 what: "price level quantity",
             });
@@ -1481,7 +1498,11 @@ mod tests {
         amend(&mut b, 1, 100, 4);
         assert_eq!(b.best_bid(), Some((100, 4)), "reduce drops the aggregate");
         amend(&mut b, 1, 100, 9);
-        assert_eq!(b.best_bid(), Some((100, 9)), "increase raises the aggregate");
+        assert_eq!(
+            b.best_bid(),
+            Some((100, 9)),
+            "increase raises the aggregate"
+        );
         amend(&mut b, 1, 99, 9);
         assert_eq!(b.best_bid(), Some((99, 9)), "reprice moves the aggregate");
         let mut out = [DepthLevel {
@@ -2615,11 +2636,26 @@ mod tests {
         // type, with the complete event stream pinned.
         let mut b = book();
         let mut storage = buffer();
+        run_golden_session(&mut b, &mut storage);
+        assert_eq!(storage, golden_expected());
+
+        assert_eq!(
+            b.live_order_count(),
+            0,
+            "every order reached a terminal state"
+        );
+        assert_eq!(b.next_seq(), 10);
+        b.debug_assert_invariants();
+    }
+
+    /// The scripted nine-command session for `event_shape_golden`:
+    /// every command type once, against one shared event storage.
+    fn run_golden_session(b: &mut Book, storage: &mut Vec<ExecutionEvent>) {
         let mut run = |b: &mut Book, f: &dyn Fn(&mut Book, &mut EventBuffer<'_>)| {
-            let mut events = EventBuffer::new(&mut storage);
+            let mut events = EventBuffer::new(storage);
             f(b, &mut events);
         };
-        run(&mut b, &|b, e| {
+        run(b, &|b, e| {
             b.add_order(
                 OrderId(1),
                 ParticipantId(1),
@@ -2632,7 +2668,7 @@ mod tests {
             )
             .expect("bid rests");
         });
-        run(&mut b, &|b, e| {
+        run(b, &|b, e| {
             b.add_order(
                 OrderId(2),
                 ParticipantId(2),
@@ -2645,10 +2681,10 @@ mod tests {
             )
             .expect("ask rests");
         });
-        run(&mut b, &|b, e| {
+        run(b, &|b, e| {
             b.amend_order(OrderId(2), 103, 10, e).expect("amend");
         });
-        run(&mut b, &|b, e| {
+        run(b, &|b, e| {
             b.add_order(
                 OrderId(3),
                 ParticipantId(3),
@@ -2661,7 +2697,7 @@ mod tests {
             )
             .expect("crossing bid fills");
         });
-        run(&mut b, &|b, e| {
+        run(b, &|b, e| {
             b.add_order(
                 OrderId(4),
                 ParticipantId(3),
@@ -2674,7 +2710,7 @@ mod tests {
             )
             .expect("ioc sweeps and expires");
         });
-        run(&mut b, &|b, e| {
+        run(b, &|b, e| {
             b.add_order(
                 OrderId(5),
                 ParticipantId(1),
@@ -2687,7 +2723,7 @@ mod tests {
             )
             .expect("ask rests");
         });
-        run(&mut b, &|b, e| {
+        run(b, &|b, e| {
             b.add_order(
                 OrderId(6),
                 ParticipantId(1),
@@ -2700,18 +2736,13 @@ mod tests {
             )
             .expect("self-trade prevented");
         });
-        run(&mut b, &|b, e| {
+        run(b, &|b, e| {
             b.cancel_by_participant(ParticipantId(1), e)
                 .expect("mass cancel");
         });
-        run(&mut b, &|b, e| {
+        run(b, &|b, e| {
             b.cancel_order(OrderId(2), e).expect("cancel");
         });
-        assert_eq!(storage, golden_expected());
-
-        assert_eq!(b.live_order_count(), 0, "every order reached a terminal state");
-        assert_eq!(b.next_seq(), 10);
-        b.debug_assert_invariants();
     }
 
     /// The pinned event stream for `event_shape_golden` (INV-EVENT-3):
@@ -2720,17 +2751,17 @@ mod tests {
         vec![
             ExecutionEvent::Accepted {
                 seq: 1,
-                order_id: OrderId(1)
+                order_id: OrderId(1),
             },
             ExecutionEvent::Accepted {
                 seq: 2,
-                order_id: OrderId(2)
+                order_id: OrderId(2),
             },
             ExecutionEvent::Amended {
                 seq: 3,
                 order_id: OrderId(2),
                 price: 103,
-                qty: 10
+                qty: 10,
             },
             ExecutionEvent::Trade {
                 seq: 4,
@@ -2741,7 +2772,7 @@ mod tests {
             },
             ExecutionEvent::Filled {
                 seq: 4,
-                order_id: OrderId(3)
+                order_id: OrderId(3),
             },
             ExecutionEvent::Trade {
                 seq: 5,
@@ -2752,30 +2783,30 @@ mod tests {
             },
             ExecutionEvent::Filled {
                 seq: 5,
-                order_id: OrderId(1)
+                order_id: OrderId(1),
             },
             ExecutionEvent::Expired {
                 seq: 5,
                 order_id: OrderId(4),
-                remaining_qty: 5
+                remaining_qty: 5,
             },
             ExecutionEvent::Accepted {
                 seq: 6,
-                order_id: OrderId(5)
+                order_id: OrderId(5),
             },
             ExecutionEvent::SelfTradePrevented {
                 seq: 7,
-                order_id: OrderId(6)
+                order_id: OrderId(6),
             },
             ExecutionEvent::Cancelled {
                 seq: 8,
                 order_id: OrderId(5),
-                reason: CancelReason::ByParticipant
+                reason: CancelReason::ByParticipant,
             },
             ExecutionEvent::Cancelled {
                 seq: 9,
                 order_id: OrderId(2),
-                reason: CancelReason::Requested
+                reason: CancelReason::Requested,
             },
         ]
     }

@@ -90,17 +90,26 @@ fn stp_of(code: u8) -> Option<StpPolicy> {
 }
 
 fn add_strategy() -> impl Strategy<Value = Op> {
-    (1u64..=24, 0u32..3, any::<bool>(), 95u64..=106, 1u64..=20, 0u8..=6, 0u8..=3).prop_map(
-        |(id, participant, is_bid, price, qty, kind, stp_code)| Op::Add {
-            id,
-            participant,
-            is_bid,
-            price,
-            qty,
-            kind,
-            stp_code,
-        },
+    (
+        1u64..=24,
+        0u32..3,
+        any::<bool>(),
+        95u64..=106,
+        1u64..=20,
+        0u8..=6,
+        0u8..=3,
     )
+        .prop_map(
+            |(id, participant, is_bid, price, qty, kind, stp_code)| Op::Add {
+                id,
+                participant,
+                is_bid,
+                price,
+                qty,
+                kind,
+                stp_code,
+            },
+        )
 }
 
 fn op_strategy() -> impl Strategy<Value = Op> {
@@ -311,7 +320,15 @@ fn apply_add(
         prop_assert!(storage.is_empty());
         return Ok(());
     }
-    match oracle.add_typed(id, participant, side, order_type, price, qty, stp.unwrap_or(DEFAULT_STP)) {
+    match oracle.add_typed(
+        id,
+        participant,
+        side,
+        order_type,
+        price,
+        qty,
+        stp.unwrap_or(DEFAULT_STP),
+    ) {
         Ok(expected) => {
             let got = run_op(
                 book,
@@ -429,6 +446,72 @@ fn apply_cbp(book: &mut Book, oracle: &mut ReferenceBook, participant: u32) -> T
     Ok(())
 }
 
+/// Apply one amend to both implementations and compare the event
+/// stream or the exact rejection.
+fn apply_amend(
+    book: &mut Book,
+    oracle: &mut ReferenceBook,
+    id: u64,
+    new_price: u64,
+    new_qty: u64,
+) -> TestCaseResult {
+    if oracle.contains(id) {
+        match oracle.amend(id, new_price, new_qty) {
+            Ok(expected) => {
+                let got = run_op(
+                    book,
+                    &Op::Amend {
+                        id,
+                        new_price,
+                        new_qty,
+                    },
+                    64,
+                );
+                prop_assert_eq!(
+                    got.as_deref(),
+                    Ok(expected.as_slice()),
+                    "amend stream mismatch"
+                );
+            }
+            Err(OracleReject::AmendWouldCross { opposite_best }) => {
+                let mut storage = Vec::with_capacity(64);
+                let mut events = EventBuffer::new(&mut storage);
+                let err = book
+                    .amend_order(OrderId(id), new_price, new_qty, &mut events)
+                    .expect_err("oracle said the amend crosses");
+                prop_assert_eq!(
+                    err,
+                    BookError::AmendWouldCross {
+                        order_id: OrderId(id),
+                        new_price,
+                        opposite_best
+                    }
+                );
+                prop_assert!(storage.is_empty());
+            }
+            Err(other) => {
+                return Err(TestCaseError::fail(format!(
+                    "unexpected amend rejection from a live id: {other:?}"
+                )));
+            }
+        }
+    } else {
+        let mut storage = Vec::with_capacity(64);
+        let mut events = EventBuffer::new(&mut storage);
+        let err = book
+            .amend_order(OrderId(id), new_price, new_qty, &mut events)
+            .expect_err("amend of a missing id must fail");
+        prop_assert_eq!(
+            err,
+            BookError::OrderNotFound {
+                order_id: OrderId(id)
+            }
+        );
+        prop_assert!(storage.is_empty());
+    }
+    Ok(())
+}
+
 /// Apply one generated command to both books, then assert the books
 /// agree on best prices, depth, and live count.
 fn apply_op(book: &mut Book, oracle: &mut ReferenceBook, op: &Op) -> TestCaseResult {
@@ -441,7 +524,17 @@ fn apply_op(book: &mut Book, oracle: &mut ReferenceBook, op: &Op) -> TestCaseRes
             qty,
             kind,
             stp_code,
-        } => apply_add(book, oracle, id, participant, is_bid, price, qty, kind, stp_code)?,
+        } => apply_add(
+            book,
+            oracle,
+            id,
+            participant,
+            is_bid,
+            price,
+            qty,
+            kind,
+            stp_code,
+        )?,
         Op::Cancel { id } => {
             let mut storage = Vec::with_capacity(64);
             if let Some((expected, _remaining)) = oracle.cancel(id) {
@@ -456,7 +549,12 @@ fn apply_op(book: &mut Book, oracle: &mut ReferenceBook, op: &Op) -> TestCaseRes
                 let err = book
                     .cancel_order(OrderId(id), &mut events)
                     .expect_err("cancel of a missing id must fail");
-                prop_assert_eq!(err, BookError::OrderNotFound { order_id: OrderId(id) });
+                prop_assert_eq!(
+                    err,
+                    BookError::OrderNotFound {
+                        order_id: OrderId(id)
+                    }
+                );
                 prop_assert!(storage.is_empty());
             }
         }
@@ -464,57 +562,7 @@ fn apply_op(book: &mut Book, oracle: &mut ReferenceBook, op: &Op) -> TestCaseRes
             id,
             new_price,
             new_qty,
-        } => {
-            if oracle.contains(id) {
-                match oracle.amend(id, new_price, new_qty) {
-                    Ok(expected) => {
-                        let got = run_op(
-                            book,
-                            &Op::Amend {
-                                id,
-                                new_price,
-                                new_qty,
-                            },
-                            64,
-                        );
-                        prop_assert_eq!(
-                            got.as_deref(),
-                            Ok(expected.as_slice()),
-                            "amend stream mismatch"
-                        );
-                    }
-                    Err(OracleReject::AmendWouldCross { opposite_best }) => {
-                        let mut storage = Vec::with_capacity(64);
-                        let mut events = EventBuffer::new(&mut storage);
-                        let err = book
-                            .amend_order(OrderId(id), new_price, new_qty, &mut events)
-                            .expect_err("oracle said the amend crosses");
-                        prop_assert_eq!(
-                            err,
-                            BookError::AmendWouldCross {
-                                order_id: OrderId(id),
-                                new_price,
-                                opposite_best
-                            }
-                        );
-                        prop_assert!(storage.is_empty());
-                    }
-                    Err(other) => {
-                        return Err(TestCaseError::fail(format!(
-                            "unexpected amend rejection from a live id: {other:?}"
-                        )));
-                    }
-                }
-            } else {
-                let mut storage = Vec::with_capacity(64);
-                let mut events = EventBuffer::new(&mut storage);
-                let err = book
-                    .amend_order(OrderId(id), new_price, new_qty, &mut events)
-                    .expect_err("amend of a missing id must fail");
-                prop_assert_eq!(err, BookError::OrderNotFound { order_id: OrderId(id) });
-                prop_assert!(storage.is_empty());
-            }
-        }
+        } => apply_amend(book, oracle, id, new_price, new_qty)?,
         Op::CancelByParticipant { participant } => apply_cbp(book, oracle, participant)?,
     }
     assert_agreement(book, oracle);

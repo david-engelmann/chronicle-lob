@@ -294,10 +294,7 @@ impl ReferenceBook {
         new_price: u64,
         new_qty: u64,
     ) -> Result<Vec<ExecutionEvent>, OracleReject> {
-        let order = *self
-            .orders
-            .get(&order_id)
-            .ok_or(OracleReject::NotFound)?;
+        let order = *self.orders.get(&order_id).ok_or(OracleReject::NotFound)?;
         if let Some(best) = self.best(order.side.opposite()) {
             let crosses = match order.side {
                 Side::Bid => new_price >= best.0,
