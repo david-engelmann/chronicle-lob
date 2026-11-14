@@ -260,7 +260,7 @@ pub fn parse_frame(bytes: &[u8], offset: u64) -> Result<FrameParse, WalError> {
 }
 
 /// Side encoding in frame payloads: 0 bid, 1 ask.
-pub(crate) const fn side_to_byte(side: Side) -> u8 {
+pub const fn side_to_byte(side: Side) -> u8 {
     match side {
         Side::Bid => 0,
         Side::Ask => 1,
@@ -268,7 +268,7 @@ pub(crate) const fn side_to_byte(side: Side) -> u8 {
 }
 
 /// Order type encoding in frame payloads.
-pub(crate) const fn order_type_to_byte(order_type: OrderType) -> u8 {
+pub const fn order_type_to_byte(order_type: OrderType) -> u8 {
     match order_type {
         OrderType::Limit => 0,
         OrderType::Ioc => 1,
@@ -280,7 +280,7 @@ pub(crate) const fn order_type_to_byte(order_type: OrderType) -> u8 {
 /// Self-trade prevention encoding in frame payloads and the snapshot
 /// header: 0 cancel incoming, 1 cancel resting, 2 cancel both. (255
 /// in an add payload means the book default applies.)
-pub(crate) const fn stp_to_byte(stp: StpPolicy) -> u8 {
+pub const fn stp_to_byte(stp: StpPolicy) -> u8 {
     match stp {
         StpPolicy::CancelIncoming => 0,
         StpPolicy::CancelResting => 1,

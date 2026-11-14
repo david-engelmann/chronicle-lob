@@ -14,9 +14,9 @@
 //! Milestone 3 docs sync.
 
 /// Domain prefix for write-ahead log frames.
-pub(crate) const WAL_DOMAIN: &[u8] = b"chronicle-wal/v1";
+pub const WAL_DOMAIN: &[u8] = b"chronicle-wal/v1";
 /// Domain prefix for snapshots.
-pub(crate) const SNAPSHOT_DOMAIN: &[u8] = b"chronicle-snapshot/v1";
+pub const SNAPSHOT_DOMAIN: &[u8] = b"chronicle-snapshot/v1";
 
 /// Reflected Castagnoli polynomial.
 const POLYNOMIAL: u32 = 0x82F6_3B78;
