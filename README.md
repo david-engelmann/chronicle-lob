@@ -41,15 +41,15 @@ The core crate has no dependencies outside the Rust standard library.
 
 ## Current state
 
-The project is being built in four milestones, and is at milestone 2.
+The project is being built in four milestones, and is at milestone 3.
 
 - Milestone 1 has landed. The core book, the price grid, limit order
   matching, cancels, and best-price and depth queries.
-- Milestone 2 is in progress now. All four order types, amend,
-  mass cancel by participant, and self-trade prevention are
-  implemented and under review.
-- Milestone 3 will add the write-ahead log and snapshots, so a book
-  can be written to disk as it runs and rebuilt exactly after a crash.
+- Milestone 2 has landed. All four order types, amend, mass cancel
+  by participant, and self-trade prevention.
+- Milestone 3 is in progress now. The write-ahead log and snapshots,
+  so a book can be written to disk as it runs and rebuilt exactly
+  after a crash.
 - Milestone 4 will add a command line tool for replaying and
   benchmarking a book, plus the final performance proof work.
 
