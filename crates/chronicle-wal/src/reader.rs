@@ -244,7 +244,16 @@ mod tests {
             );
             for &pos in fixed_positions.iter().filter(|&&p| p < len) {
                 let mut damaged = log.clone();
-                damaged[first.len() + pos] = damaged[first.len() + pos].wrapping_add(1);
+                let at = first.len() + pos;
+                // The kind byte is fixed as a set, not a value, so
+                // flip it clear of every known kind; each other
+                // fixed byte holds exactly one value, and adding
+                // one breaks it.
+                damaged[at] = if pos == 20 {
+                    0xEE
+                } else {
+                    damaged[at].wrapping_add(1)
+                };
                 let err = scan_log(&damaged)
                     .expect_err(&format!("fragment {len} with byte {pos} flipped"));
                 assert!(
