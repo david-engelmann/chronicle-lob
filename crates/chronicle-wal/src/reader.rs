@@ -128,7 +128,7 @@ mod tests {
                 .iter()
                 .rev()
                 .find(|&&end| end <= cut)
-                .map_or(0, |&&end| end);
+                .map_or(0, |&end| end);
             assert_eq!(outcome.frames.len(), complete, "cut {cut}");
             assert_eq!(
                 outcome.discarded_trailing_bytes,
