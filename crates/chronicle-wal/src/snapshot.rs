@@ -517,8 +517,8 @@ mod tests {
         // book allocates and emits exactly like the original.
         let config = test_config();
         let mut book = Book::new(config).expect("book");
-        let mut run = |book: &mut Book,
-                       f: &dyn Fn(
+        let run = |book: &mut Book,
+                   f: &dyn Fn(
             &mut Book,
             &mut EventBuffer<'_>,
         ) -> Result<usize, chronicle_core::BookError>| {

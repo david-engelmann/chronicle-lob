@@ -31,8 +31,8 @@ pub struct RecoveryReport {
     pub last_recovered_seq: u64,
 }
 
-/// A recovered book and its report.
-#[derive(Debug)]
+/// A recovered book and its report. No `Debug` derive: the book
+/// itself does not implement `Debug`.
 pub struct Recovery {
     /// The rebuilt book, ready for new commands.
     pub book: Book,
@@ -48,7 +48,7 @@ pub struct Recovery {
 /// Returns [`WalError::SnapshotConfigMismatch`] when the snapshot's
 /// configuration differs from `config`, [`WalError::Book`] when the
 /// base book cannot be built or a replayed command is rejected, and
-/// the scanning errors of [`scan_log`], including
+/// the errors of the reader scan, including
 /// [`WalError::WalSequenceGap`] at the snapshot seam.
 pub fn recover(
     config: BookConfig,
