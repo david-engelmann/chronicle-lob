@@ -107,6 +107,10 @@ impl Arena {
     /// slot states and links to match the persisted snapshot exactly;
     /// this setter exists because the three counters are private, and
     /// it keeps them consistent with each other by construction.
+    #[expect(
+        dead_code,
+        reason = "M3 Stage A: the snapshot restore that calls this setter lands in Stage B"
+    )]
     pub const fn restore_bookkeeping(&mut self, free_head: u32, free_len: u32, live: u32) {
         self.free_head = free_head;
         self.free_len = free_len;

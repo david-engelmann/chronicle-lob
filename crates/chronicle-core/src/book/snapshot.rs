@@ -86,8 +86,25 @@ impl Book {
     /// debug builds, which a state produced by capture or by the
     /// checked snapshot decode cannot do.
     pub fn from_snapshot_state(state: SnapshotState) -> Result<Self, BookError> {
-        let SnapshotState { next_seq, .. } = state;
-        panic!("M3 Stage A stub: snapshot restore lands in Stage B (state next_seq {next_seq})")
+        let SnapshotState {
+            config,
+            next_seq,
+            generations,
+            free_list_head,
+            free_links,
+            levels,
+            live_orders,
+        } = state;
+        let _ = (
+            config,
+            next_seq,
+            generations,
+            free_list_head,
+            free_links,
+            levels,
+            live_orders,
+        );
+        panic!("M3 Stage A stub: snapshot restore lands in Stage B")
     }
 }
 
