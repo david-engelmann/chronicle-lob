@@ -191,7 +191,7 @@ pub enum WalError {
 
 impl WalError {
     /// Wrap an I/O error with the operation that hit it.
-    pub(crate) fn io(operation: &'static str, source: io::Error) -> Self {
+    pub(crate) const fn io(operation: &'static str, source: io::Error) -> Self {
         Self::Io { operation, source }
     }
 }

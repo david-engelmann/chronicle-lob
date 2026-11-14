@@ -35,7 +35,7 @@ pub trait WalSink: Write {
 
 impl WalSink for File {
     fn sync_data(&mut self) -> io::Result<()> {
-        File::sync_data(self)
+        Self::sync_data(self)
     }
 }
 
@@ -69,7 +69,7 @@ impl WalWriter<File> {
 impl<S: WalSink> WalWriter<S> {
     /// Wrap a sink. The encode buffer starts empty and warms to the
     /// largest frame on first use.
-    pub fn new(sink: S, policy: SyncPolicy) -> Self {
+    pub const fn new(sink: S, policy: SyncPolicy) -> Self {
         Self {
             sink,
             buffer: Vec::new(),
@@ -110,12 +110,12 @@ impl<S: WalSink> WalWriter<S> {
     /// Capacity of the reused encode buffer, exposed so tests can
     /// prove it stops growing (INV-ALLOC-3).
     #[must_use]
-    pub fn buffer_capacity(&self) -> usize {
+    pub const fn buffer_capacity(&self) -> usize {
         self.buffer.capacity()
     }
 
     /// The sink, for inspection in tests.
-    pub fn sink(&self) -> &S {
+    pub const fn sink(&self) -> &S {
         &self.sink
     }
 

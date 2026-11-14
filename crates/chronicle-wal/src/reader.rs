@@ -40,6 +40,11 @@ pub struct ScanOutcome {
 /// and [`WalError::WalSequenceGap`] at the first break in sequence
 /// consecutiveness. A torn tail is not an error: it is reported in
 /// [`ScanOutcome::discarded_trailing_bytes`].
+///
+/// # Panics
+///
+/// Stage A stub: panics until Stage B lands the implementation,
+/// whose documentation states its own panic surface.
 pub fn scan_log(bytes: &[u8]) -> Result<ScanOutcome, WalError> {
     let _ = bytes;
     panic!("M3 Stage A stub: log scanning lands in Stage B")

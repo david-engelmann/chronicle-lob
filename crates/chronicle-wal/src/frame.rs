@@ -43,9 +43,11 @@ pub const CANCEL_BY_PARTICIPANT_PAYLOAD_LEN: usize = 16;
 pub const AMEND_PAYLOAD_LEN: usize = 32;
 
 /// One accepted book command, mirroring the four `Book` command
-/// methods field for field. The WAL persists commands, never events,
-/// and a rejected command is never written, so every frame in a log
-/// is a command the book accepted at its sequence number.
+/// methods field for field.
+///
+/// The WAL persists commands, never events, and a rejected command
+/// is never written, so every frame in a log is a command the book
+/// accepted at its sequence number.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WalCommand {
     /// Add an order, as `Book::add_order`.
@@ -151,9 +153,10 @@ impl WalCommand {
 }
 
 /// Encode one frame for `command` at sequence `seq` into `out`,
-/// clearing any previous content. The buffer is reused across calls:
-/// after the first frame of the largest kind, its capacity never
-/// changes again (INV-ALLOC-3).
+/// clearing any previous content.
+///
+/// The buffer is reused across calls: after the first frame of the
+/// largest kind, its capacity never changes again (INV-ALLOC-3).
 pub fn encode_frame(command: &WalCommand, seq: u64, out: &mut Vec<u8>) {
     let frame_len = HEADER_LEN + command.payload_len();
     out.clear();
@@ -246,6 +249,11 @@ pub enum FrameParse {
 ///
 /// Returns [`WalError::CorruptWalRecord`] with the offset and the
 /// specific failure.
+///
+/// # Panics
+///
+/// Stage A stub: panics until Stage B lands the implementation,
+/// whose documentation states its own panic surface.
 pub fn parse_frame(bytes: &[u8], offset: u64) -> Result<FrameParse, WalError> {
     let _ = (bytes, offset);
     panic!("M3 Stage A stub: frame decoding lands in Stage B")

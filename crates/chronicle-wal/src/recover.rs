@@ -50,6 +50,11 @@ pub struct Recovery {
 /// base book cannot be built or a replayed command is rejected, and
 /// the errors of the reader scan, including
 /// [`WalError::WalSequenceGap`] at the snapshot seam.
+///
+/// # Panics
+///
+/// Stage A stub: panics until Stage B lands the implementation,
+/// whose documentation states its own panic surface.
 pub fn recover(
     config: BookConfig,
     snapshot: Option<SnapshotState>,
@@ -185,7 +190,9 @@ mod tests {
         // be exactly last_included_seq + 1.
         let snapshot = state_after(3);
         let log = log_of(&[(add(3), 5)]);
-        let err = recover(test_config(), Some(snapshot), &log).expect_err("seam gap");
+        let err = recover(test_config(), Some(snapshot), &log)
+            .err()
+            .expect("seam gap");
         match err {
             WalError::WalSequenceGap {
                 expected: 4,
@@ -223,7 +230,9 @@ mod tests {
         // the writer side would never have accepted) fails with the
         // book's error at the frame's sequence, never a panic.
         let log = log_of(&[(add(1), 1), (add(1), 2)]);
-        let err = recover(test_config(), None, &log).expect_err("duplicate id");
+        let err = recover(test_config(), None, &log)
+            .err()
+            .expect("duplicate id");
         match err {
             WalError::Book {
                 seq: Some(2),

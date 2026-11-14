@@ -47,12 +47,18 @@ pub enum SaveStep {
 /// 68 + 8 per slot + 20 per level + 56 per live order (section
 /// 10.2).
 #[must_use]
-pub fn encoded_len(state: &SnapshotState) -> usize {
+pub const fn encoded_len(state: &SnapshotState) -> usize {
     68 + 8 * state.generations.len() + 20 * state.levels.len() + 56 * state.live_orders.len()
 }
 
 /// Encode `state` into `out`, clearing any previous content. The
 /// buffer is reused across calls, like the WAL writer's.
+///
+/// # Panics
+///
+/// Panics when `state.next_seq` is zero. A state captured from a
+/// book always has a next sequence of at least 1, because sequence
+/// numbers start at 1.
 pub fn encode_snapshot(state: &SnapshotState, out: &mut Vec<u8>) {
     let total = encoded_len(state);
     out.clear();
@@ -111,9 +117,10 @@ pub fn encode_snapshot(state: &SnapshotState, out: &mut Vec<u8>) {
     out[total - TRAILER_LEN..total].copy_from_slice(&crc.to_le_bytes());
 }
 
-/// Decode and fully validate a snapshot held in memory, following
-/// the validation order of section 10.4: file size against the
-/// header arithmetic, magic, version, header length, sequence
+/// Decode and fully validate a snapshot held in memory.
+///
+/// Validation follows the order of section 10.4: file size against
+/// the header arithmetic, magic, version, header length, sequence
 /// consistency, configuration compatibility with `expected`, the
 /// structural checks (free list exactness, live record consistency),
 /// and finally the trailing checksum.
@@ -123,6 +130,11 @@ pub fn encode_snapshot(state: &SnapshotState, out: &mut Vec<u8>) {
 /// Returns [`WalError::CorruptSnapshot`] for any structural or
 /// checksum failure and [`WalError::SnapshotConfigMismatch`] when a
 /// configuration field differs from `expected`.
+///
+/// # Panics
+///
+/// Stage A stub: panics until Stage B lands the implementation,
+/// whose documentation states its own panic surface.
 pub fn decode_snapshot(bytes: &[u8], expected: &BookConfig) -> Result<SnapshotState, WalError> {
     let _ = (bytes, expected);
     panic!("M3 Stage A stub: snapshot decoding lands in Stage B")
@@ -147,6 +159,7 @@ pub fn save_snapshot(path: &Path, state: &SnapshotState) -> Result<(), WalError>
 }
 
 /// [`save_snapshot`] with a hook called after each protocol step.
+///
 /// Returning `false` from the hook stops the save at that point,
 /// exactly as a crash would: the function returns success with the
 /// filesystem left mid-protocol. Recovery tests drive the crash

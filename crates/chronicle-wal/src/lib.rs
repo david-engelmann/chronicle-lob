@@ -16,13 +16,13 @@
 //! deterministic as the book it rebuilds.
 #![forbid(unsafe_code)]
 
-mod crc;
-mod error;
-mod frame;
-mod reader;
-mod recover;
-mod snapshot;
-mod writer;
+pub(crate) mod crc;
+pub(crate) mod error;
+pub(crate) mod frame;
+pub(crate) mod reader;
+pub(crate) mod recover;
+pub(crate) mod snapshot;
+pub(crate) mod writer;
 
 pub use crc::{Crc32c, crc32c};
 pub use error::{SnapshotCorruption, WalCorruption, WalError};
