@@ -186,7 +186,7 @@ mod tests {
                 .iter()
                 .all(|l| l.head == NIL && l.tail == NIL && l.qty == 0 && l.count == 0)
         );
-        assert!(state.live_orders.is_empty());
+        assert_eq!(state.live_orders.len(), 0);
     }
 
     #[test]

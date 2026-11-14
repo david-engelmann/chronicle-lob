@@ -14,7 +14,7 @@ use chronicle_core::{
 use chronicle_wal::{SyncPolicy, WalCommand, WalSink, WalWriter, recover};
 use proptest::prelude::*;
 
-fn config() -> BookConfig {
+const fn config() -> BookConfig {
     BookConfig {
         max_orders: 32,
         grid_len: 640,
@@ -177,10 +177,7 @@ proptest! {
             .expect("snapshot plus wal");
         prop_assert_eq!(snapped.report.frames_skipped, live.mid_accepted);
         let mut snapped = snapped.book;
-        prop_assert_eq!(
-            full.capture_snapshot_state(),
-            live.final_state.clone()
-        );
+        prop_assert_eq!(full.capture_snapshot_state(), live.final_state);
         prop_assert_eq!(
             snapped.capture_snapshot_state(),
             live.final_state

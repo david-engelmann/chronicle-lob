@@ -127,7 +127,7 @@ mod tests {
             let last_end = frame_ends
                 .iter()
                 .filter(|&&end| end <= cut)
-                .last()
+                .next_back()
                 .copied()
                 .unwrap_or(0);
             assert_eq!(outcome.frames.len(), complete, "cut {cut}");
@@ -169,7 +169,7 @@ mod tests {
             );
         }
         // A checksum flip names both checksums (INV-WAL-3).
-        let mut damaged = log.clone();
+        let mut damaged = log;
         damaged[28] = damaged[28].wrapping_add(1);
         let err = scan_log(&damaged).expect_err("stored checksum damaged");
         match err {
@@ -271,7 +271,7 @@ mod tests {
         let log = log_of(&[(add(1), 41), (add(2), 42)]);
         assert_eq!(scan_log(&log).expect("mid-stream start").frames.len(), 2);
         let outcome = scan_log(&[]).expect("empty log");
-        assert!(outcome.frames.is_empty());
+        assert_eq!(outcome.frames.len(), 0);
         assert_eq!(outcome.discarded_trailing_bytes, 0);
     }
 }
