@@ -403,69 +403,7 @@ fn partial_u16(bytes: &[u8], at: usize) -> u16 {
 /// and the defined value sets of its coded fields.
 fn decode_payload(kind: u8, payload: &[u8], offset: u64) -> Result<WalCommand, WalError> {
     match kind {
-        KIND_ADD => {
-            if payload[15] != 0 {
-                return Err(corrupt(
-                    offset,
-                    WalCorruption::NonZeroReserved {
-                        field: "add.reserved",
-                    },
-                ));
-            }
-            if payload[32..40] != [0u8; 8] {
-                return Err(corrupt(
-                    offset,
-                    WalCorruption::NonZeroReserved {
-                        field: "add.reserved_tail",
-                    },
-                ));
-            }
-            let side = match payload[12] {
-                0 => Side::Bid,
-                1 => Side::Ask,
-                _ => {
-                    return Err(corrupt(
-                        offset,
-                        WalCorruption::BadPayloadField { field: "add.side" },
-                    ));
-                }
-            };
-            let order_type = match payload[13] {
-                0 => OrderType::Limit,
-                1 => OrderType::Ioc,
-                2 => OrderType::Fok,
-                3 => OrderType::PostOnly,
-                _ => {
-                    return Err(corrupt(
-                        offset,
-                        WalCorruption::BadPayloadField {
-                            field: "add.order_type",
-                        },
-                    ));
-                }
-            };
-            let stp = match payload[14] {
-                0 => Some(StpPolicy::CancelIncoming),
-                1 => Some(StpPolicy::CancelResting),
-                2 => Some(StpPolicy::CancelBoth),
-                255 => None,
-                _ => {
-                    return Err(corrupt(
-                        offset,
-                        WalCorruption::BadPayloadField { field: "add.stp" },
-                    ));
-                }
-            };
-            Ok(WalCommand::Add {
-                order_id: OrderId(read_u64(payload, 0)),
-                participant: ParticipantId(read_u32(payload, 8)),
-                side,
-                order_type,
-                stp,
-                price: read_u64(payload, 16),
-                qty: read_u64(payload, 24),
-            })
-        }
+        KIND_ADD => decode_add(payload, offset),
         KIND_CANCEL => {
             if payload[8..16] != [0u8; 8] {
                 return Err(corrupt(
@@ -511,8 +449,65 @@ fn decode_payload(kind: u8, payload: &[u8], offset: u64) -> Result<WalCommand, W
     }
 }
 
+/// Decode an add payload (kind 1) into its command.
+fn decode_add(payload: &[u8], offset: u64) -> Result<WalCommand, WalError> {
+    if payload[15] != 0 {
+        return Err(corrupt(
+            offset,
+            WalCorruption::NonZeroReserved {
+                field: "add.reserved",
+            },
+        ));
+    }
+    if payload[32..40] != [0u8; 8] {
+        return Err(corrupt(
+            offset,
+            WalCorruption::NonZeroReserved {
+                field: "add.reserved_tail",
+            },
+        ));
+    }
+    let side = side_from_byte(payload[12])
+        .ok_or_else(|| corrupt(offset, WalCorruption::BadPayloadField { field: "add.side" }))?;
+    let order_type = match payload[13] {
+        0 => OrderType::Limit,
+        1 => OrderType::Ioc,
+        2 => OrderType::Fok,
+        3 => OrderType::PostOnly,
+        _ => {
+            return Err(corrupt(
+                offset,
+                WalCorruption::BadPayloadField {
+                    field: "add.order_type",
+                },
+            ));
+        }
+    };
+    let stp = match payload[14] {
+        255 => None,
+        byte => match stp_from_byte(byte) {
+            Some(policy) => Some(policy),
+            None => {
+                return Err(corrupt(
+                    offset,
+                    WalCorruption::BadPayloadField { field: "add.stp" },
+                ));
+            }
+        },
+    };
+    Ok(WalCommand::Add {
+        order_id: OrderId(read_u64(payload, 0)),
+        participant: ParticipantId(read_u32(payload, 8)),
+        side,
+        order_type,
+        stp,
+        price: read_u64(payload, 16),
+        qty: read_u64(payload, 24),
+    })
+}
+
 /// Shorthand for a corruption error at one offset.
-fn corrupt(offset: u64, detail: WalCorruption) -> WalError {
+const fn corrupt(offset: u64, detail: WalCorruption) -> WalError {
     WalError::CorruptWalRecord { offset, detail }
 }
 

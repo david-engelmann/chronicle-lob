@@ -57,28 +57,25 @@ pub fn recover(
     snapshot: Option<SnapshotState>,
     wal_bytes: &[u8],
 ) -> Result<Recovery, WalError> {
-    let (mut book, base_seq, snapshot_seq) = match snapshot {
-        Some(state) => {
-            if let Some(err) = config_mismatch(&state.config, &config) {
-                return Err(err);
-            }
-            let base_seq = state
-                .next_seq
-                .checked_sub(1)
-                .ok_or(WalError::CorruptSnapshot {
-                    detail: SnapshotCorruption::NextSeqMismatch {
-                        last_included_seq: 0,
-                        next_seq: 0,
-                    },
-                })?;
-            let book = Book::from_snapshot_state(state)
-                .map_err(|source| WalError::Book { seq: None, source })?;
-            (book, base_seq, Some(base_seq))
+    let (mut book, base_seq, snapshot_seq) = if let Some(state) = snapshot {
+        if let Some(err) = config_mismatch(&state.config, &config) {
+            return Err(err);
         }
-        None => {
-            let book = Book::new(config).map_err(|source| WalError::Book { seq: None, source })?;
-            (book, 0, None)
-        }
+        let base_seq = state
+            .next_seq
+            .checked_sub(1)
+            .ok_or(WalError::CorruptSnapshot {
+                detail: SnapshotCorruption::NextSeqMismatch {
+                    last_included_seq: 0,
+                    next_seq: 0,
+                },
+            })?;
+        let book = Book::from_snapshot_state(state)
+            .map_err(|source| WalError::Book { seq: None, source })?;
+        (book, base_seq, Some(base_seq))
+    } else {
+        let book = Book::new(config).map_err(|source| WalError::Book { seq: None, source })?;
+        (book, 0, None)
     };
     let scan = scan_log(wal_bytes)?;
     // The scratch event buffer is discarded frame by frame; it is

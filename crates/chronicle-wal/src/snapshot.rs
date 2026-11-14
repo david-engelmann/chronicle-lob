@@ -133,6 +133,63 @@ pub fn encode_snapshot(state: &SnapshotState, out: &mut Vec<u8>) {
 /// checksum failure and [`WalError::SnapshotConfigMismatch`] when a
 /// configuration field differs from `expected`.
 pub fn decode_snapshot(bytes: &[u8], expected: &BookConfig) -> Result<SnapshotState, WalError> {
+    let header = read_header(bytes)?;
+    if let Some(err) = config_mismatch(&header.config, expected) {
+        return Err(err);
+    }
+    let max_orders = header.config.max_orders;
+    let grid_len = header.config.grid_len;
+    // Body sections, in the fixed order of section 10.2.
+    let slots = max_orders as usize;
+    let mut pos = HEADER_LEN;
+    let mut generations = Vec::with_capacity(slots);
+    for _ in 0..max_orders {
+        generations.push(read_u32(bytes, pos));
+        pos += 4;
+    }
+    let mut free_links = Vec::with_capacity(slots);
+    for _ in 0..max_orders {
+        free_links.push(read_u32(bytes, pos));
+        pos += 4;
+    }
+    let levels = decode_levels(bytes, &mut pos, grid_len, max_orders)?;
+    let (live_orders, live_seen) =
+        decode_live_records(bytes, &mut pos, &header, &generations, &free_links)?;
+    validate_free_list(&header, &generations, &free_links, &live_seen)?;
+    // The checksum is validated last (section 10.4).
+    let actual_len = bytes.len();
+    let stored_crc = read_u32(bytes, actual_len - TRAILER_LEN);
+    let computed_crc = snapshot_crc(&bytes[..actual_len - TRAILER_LEN]);
+    if computed_crc != stored_crc {
+        return Err(corrupt(SnapshotCorruption::CrcMismatch {
+            expected_crc: computed_crc,
+            actual_crc: stored_crc,
+        }));
+    }
+    Ok(SnapshotState {
+        config: *expected,
+        next_seq: header.next_seq,
+        generations,
+        free_list_head: header.free_list_head,
+        free_links,
+        levels,
+        live_orders,
+    })
+}
+
+/// A parsed snapshot header: the next sequence, the live record
+/// count, the free list head, and the configuration the snapshot
+/// was taken under.
+struct SnapshotHeader {
+    next_seq: u64,
+    live_count: u32,
+    config: BookConfig,
+    free_list_head: u32,
+}
+
+/// Read and validate the 64-byte header: the fixed fields, the
+/// size arithmetic against the byte length, and the sequence pair.
+fn read_header(bytes: &[u8]) -> Result<SnapshotHeader, WalError> {
     let actual_len = bytes.len();
     if actual_len < HEADER_LEN + TRAILER_LEN {
         return Err(corrupt(SnapshotCorruption::SizeMismatch {
@@ -192,33 +249,32 @@ pub fn decode_snapshot(bytes: &[u8], expected: &BookConfig) -> Result<SnapshotSt
             }));
         }
     };
-    let snapshot_config = BookConfig {
-        max_orders,
-        grid_len,
-        tick_size,
-        grid_start_tick,
-        default_stp,
-    };
-    if let Some(err) = config_mismatch(&snapshot_config, expected) {
-        return Err(err);
-    }
-    // Body sections, in the fixed order of section 10.2.
-    let slots = max_orders as usize;
-    let mut pos = HEADER_LEN;
-    let mut generations = Vec::with_capacity(slots);
-    for _ in 0..max_orders {
-        generations.push(read_u32(bytes, pos));
-        pos += 4;
-    }
-    let mut free_links = Vec::with_capacity(slots);
-    for _ in 0..max_orders {
-        free_links.push(read_u32(bytes, pos));
-        pos += 4;
-    }
+    Ok(SnapshotHeader {
+        next_seq,
+        live_count,
+        config: BookConfig {
+            max_orders,
+            grid_len,
+            tick_size,
+            grid_start_tick,
+            default_stp,
+        },
+        free_list_head,
+    })
+}
+
+/// Decode the level section. Each level's list ends must be NIL
+/// or name a slot.
+fn decode_levels(
+    bytes: &[u8],
+    pos: &mut usize,
+    grid_len: u32,
+    max_orders: u32,
+) -> Result<Vec<LevelState>, WalError> {
     let mut levels = Vec::with_capacity(grid_len as usize);
     for _ in 0..grid_len {
-        let head = read_u32(bytes, pos);
-        let tail = read_u32(bytes, pos + 4);
+        let head = read_u32(bytes, *pos);
+        let tail = read_u32(bytes, *pos + 4);
         if (head != u32::MAX && head >= max_orders) || (tail != u32::MAX && tail >= max_orders) {
             return Err(corrupt(SnapshotCorruption::InvalidField {
                 field: "level list end",
@@ -227,31 +283,48 @@ pub fn decode_snapshot(bytes: &[u8], expected: &BookConfig) -> Result<SnapshotSt
         levels.push(LevelState {
             head,
             tail,
-            qty: read_u64(bytes, pos + 8),
-            count: read_u32(bytes, pos + 16),
+            qty: read_u64(bytes, *pos + 8),
+            count: read_u32(bytes, *pos + 16),
         });
-        pos += 20;
+        *pos += 20;
     }
-    let mut live_orders = Vec::with_capacity(live_count as usize);
-    let mut live_seen = vec![false; slots];
+    Ok(levels)
+}
+
+/// Decode and validate the live record section, returning the
+/// records and which slots they mark live. Records are ascending
+/// by slot, each agrees with its slot's persisted generation, and
+/// each carries a NIL free link.
+fn decode_live_records(
+    bytes: &[u8],
+    pos: &mut usize,
+    header: &SnapshotHeader,
+    generations: &[u32],
+    free_links: &[u32],
+) -> Result<(Vec<LiveOrderState>, Vec<bool>), WalError> {
+    let max_orders = header.config.max_orders;
+    let grid_len = header.config.grid_len;
+    let mut live_orders = Vec::with_capacity(header.live_count as usize);
+    let mut live_seen = vec![false; max_orders as usize];
     let mut previous_slot: Option<u32> = None;
-    for _ in 0..live_count {
-        let slot = read_u32(bytes, pos);
-        let generation = read_u32(bytes, pos + 4);
-        let order_id = read_u64(bytes, pos + 8);
-        let participant = read_u32(bytes, pos + 16);
-        let price_idx = read_u32(bytes, pos + 20);
-        let qty = read_u64(bytes, pos + 24);
-        let side_byte = bytes[pos + 32];
-        let state_byte = bytes[pos + 33];
-        if bytes[pos + 34..pos + 40] != [0u8; 6] {
+    for _ in 0..header.live_count {
+        let at = *pos;
+        let slot = read_u32(bytes, at);
+        let generation = read_u32(bytes, at + 4);
+        let order_id = read_u64(bytes, at + 8);
+        let participant = read_u32(bytes, at + 16);
+        let price_idx = read_u32(bytes, at + 20);
+        let qty = read_u64(bytes, at + 24);
+        let side_byte = bytes[at + 32];
+        let state_byte = bytes[at + 33];
+        if bytes[at + 34..at + 40] != [0u8; 6] {
             return Err(corrupt(SnapshotCorruption::NonZeroReserved {
                 field: "live record padding",
             }));
         }
-        let prev = read_u32(bytes, pos + 40);
-        let next = read_u32(bytes, pos + 44);
-        if bytes[pos + 48..pos + 56] != [0u8; 8] {
+        let prev = read_u32(bytes, at + 40);
+        let next = read_u32(bytes, at + 44);
+        if bytes[at + 48..at + 56] != [0u8; 8] {
             return Err(corrupt(SnapshotCorruption::NonZeroReserved {
                 field: "live record reserved",
             }));
@@ -302,15 +375,25 @@ pub fn decode_snapshot(bytes: &[u8], expected: &BookConfig) -> Result<SnapshotSt
             prev,
             next,
         });
-        pos += 56;
+        *pos += 56;
     }
-    // The free list, walked exactly (section 10.4): it visits the
-    // free slots, each once, never a live slot, and every remaining
-    // non-live slot must be a retired slot (generation at the maximum,
-    // link NIL), which is how a snapshot tells free from retired when
-    // the format carries no per-slot state section.
-    let mut visited = vec![false; slots];
-    let mut cursor = free_list_head;
+    Ok((live_orders, live_seen))
+}
+
+/// Walk the persisted free chain exactly (section 10.4): it
+/// visits the free slots, each once, never a live slot, and every
+/// remaining non-live slot must be a retired slot (generation at
+/// the maximum, link NIL), which is how a snapshot tells free
+/// from retired when the format carries no per-slot state section.
+fn validate_free_list(
+    header: &SnapshotHeader,
+    generations: &[u32],
+    free_links: &[u32],
+    live_seen: &[bool],
+) -> Result<(), WalError> {
+    let max_orders = header.config.max_orders;
+    let mut visited = vec![false; max_orders as usize];
+    let mut cursor = header.free_list_head;
     while cursor != u32::MAX {
         if cursor >= max_orders {
             return Err(corrupt(SnapshotCorruption::FreeListInvalid {
@@ -345,24 +428,7 @@ pub fn decode_snapshot(bytes: &[u8], expected: &BookConfig) -> Result<SnapshotSt
             }
         }
     }
-    // The checksum is validated last (section 10.4).
-    let stored_crc = read_u32(bytes, actual_len - TRAILER_LEN);
-    let computed_crc = snapshot_crc(&bytes[..actual_len - TRAILER_LEN]);
-    if computed_crc != stored_crc {
-        return Err(corrupt(SnapshotCorruption::CrcMismatch {
-            expected_crc: computed_crc,
-            actual_crc: stored_crc,
-        }));
-    }
-    Ok(SnapshotState {
-        config: *expected,
-        next_seq,
-        generations,
-        free_list_head,
-        free_links,
-        levels,
-        live_orders,
-    })
+    Ok(())
 }
 
 /// Compare a snapshot's configuration against the caller's, field by
@@ -410,7 +476,7 @@ pub fn config_mismatch(snapshot_config: &BookConfig, book_config: &BookConfig) -
 }
 
 /// Shorthand for a corruption error.
-fn corrupt(detail: SnapshotCorruption) -> WalError {
+const fn corrupt(detail: SnapshotCorruption) -> WalError {
     WalError::CorruptSnapshot { detail }
 }
 
