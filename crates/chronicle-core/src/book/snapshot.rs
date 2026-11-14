@@ -7,7 +7,7 @@
 //! the captured one, including in the order `cancel_by_participant`
 //! emits its events and in the slots later allocations take.
 
-use crate::arena::{NIL, STATE_LIVE};
+use crate::arena::{NIL, STATE_FREE, STATE_LIVE, STATE_RETIRED};
 use crate::error::BookError;
 use crate::types::{LevelState, LiveOrderState, OrderId, ParticipantId, Side, SnapshotState};
 
@@ -86,25 +86,119 @@ impl Book {
     /// debug builds, which a state produced by capture or by the
     /// checked snapshot decode cannot do.
     pub fn from_snapshot_state(state: SnapshotState) -> Result<Self, BookError> {
-        let SnapshotState {
-            config,
-            next_seq,
-            generations,
-            free_list_head,
-            free_links,
-            levels,
-            live_orders,
-        } = state;
-        let _ = (
-            config,
-            next_seq,
-            generations,
-            free_list_head,
-            free_links,
-            levels,
-            live_orders,
-        );
-        panic!("M3 Stage A stub: snapshot restore lands in Stage B")
+        let mut book = Self::new(state.config)?;
+        let max_orders = state.config.max_orders;
+        let grid_len = state.config.grid_len;
+        let slots = max_orders as usize;
+        if state.generations.len() != slots || state.free_links.len() != slots {
+            return Err(BookError::InvalidConfig {
+                field: "snapshot state",
+                rule: "generation and free link sections must cover every slot",
+            });
+        }
+        if state.levels.len() != grid_len as usize {
+            return Err(BookError::InvalidConfig {
+                field: "snapshot state",
+                rule: "the level section must cover the whole grid",
+            });
+        }
+        // Walk the persisted free chain once: it must stay inside the
+        // slot range and visit no slot twice.
+        let mut on_chain = vec![false; slots];
+        let mut free_len = 0u32;
+        let mut cursor = state.free_list_head;
+        while cursor != NIL {
+            if cursor >= max_orders || on_chain[cursor as usize] {
+                return Err(BookError::InvalidConfig {
+                    field: "snapshot state",
+                    rule: "the free list must visit in-range slots at most once",
+                });
+            }
+            on_chain[cursor as usize] = true;
+            free_len += 1;
+            cursor = state.free_links[cursor as usize];
+        }
+        // Validate the live records before writing anything.
+        let mut is_live = vec![false; slots];
+        for record in &state.live_orders {
+            if record.slot >= max_orders || record.price_idx >= grid_len {
+                return Err(BookError::InvalidConfig {
+                    field: "snapshot state",
+                    rule: "live records must name an in-range slot and price",
+                });
+            }
+            if is_live[record.slot as usize]
+                || record.generation != state.generations[record.slot as usize]
+            {
+                return Err(BookError::InvalidConfig {
+                    field: "snapshot state",
+                    rule: "live records must be unique per slot and match its generation",
+                });
+            }
+            if book.lookup.get(record.order_id.0).is_some() {
+                return Err(BookError::InvalidConfig {
+                    field: "snapshot state",
+                    rule: "live order ids must be unique",
+                });
+            }
+            book.lookup
+                .insert(record.order_id.0, record.slot, record.generation)?;
+            is_live[record.slot as usize] = true;
+        }
+        // Generations for every slot, live and free and retired.
+        book.arena.generation.copy_from_slice(&state.generations);
+        // Live records into the arena columns, links included.
+        for record in &state.live_orders {
+            let s = record.slot as usize;
+            book.arena.state[s] = STATE_LIVE;
+            book.arena.order_id[s] = record.order_id.0;
+            book.arena.participant[s] = record.participant.0;
+            book.arena.price_idx[s] = record.price_idx;
+            book.arena.qty[s] = record.qty;
+            book.arena.side[s] = record.side.as_u8();
+            book.arena.prev[s] = record.prev;
+            book.arena.next[s] = record.next;
+        }
+        // Non-live slots: on the persisted chain means free, with the
+        // persisted link; off it means retired (section 10.4's restore
+        // rule, with the state the byte format cannot carry derived
+        // from chain membership).
+        for s in 0..slots {
+            if is_live[s] {
+                continue;
+            }
+            if on_chain[s] {
+                book.arena.state[s] = STATE_FREE;
+                book.arena.next[s] = state.free_links[s];
+            } else {
+                book.arena.state[s] = STATE_RETIRED;
+                book.arena.next[s] = NIL;
+            }
+            book.arena.prev[s] = NIL;
+        }
+        let live = u32::try_from(state.live_orders.len()).unwrap_or(0);
+        book.arena
+            .restore_bookkeeping(state.free_list_head, free_len, live);
+        // Level arrays verbatim; bitmaps recomputed from level counts,
+        // with each non-empty level's side read from its head order.
+        for (i, level) in state.levels.iter().enumerate() {
+            book.levels.head[i] = level.head;
+            book.levels.tail[i] = level.tail;
+            book.levels.qty[i] = level.qty;
+            book.levels.count[i] = level.count;
+            if level.count > 0 && level.head != NIL && is_live[level.head as usize] {
+                let idx = u32::try_from(i).unwrap_or(0);
+                match Side::from_u8(book.arena.side[level.head as usize]) {
+                    Side::Bid => book.bids.set(idx),
+                    Side::Ask => book.asks.set(idx),
+                }
+            }
+        }
+        book.next_seq = state.next_seq;
+        if cfg!(debug_assertions) {
+            book.debug_assert_invariants();
+        }
+        Ok(book)
     }
 }
 
