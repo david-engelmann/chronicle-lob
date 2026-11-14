@@ -10,9 +10,11 @@
 
 use std::path::Path;
 
-use chronicle_core::{Book, BookConfig, SnapshotState};
+use chronicle_core::{Book, BookConfig, EventBuffer, ExecutionEvent, SnapshotState};
 
-use crate::error::WalError;
+use crate::error::{SnapshotCorruption, WalError};
+use crate::reader::scan_log;
+use crate::snapshot::config_mismatch;
 use crate::snapshot::load_snapshot;
 
 /// What recovery did, counted exactly.
@@ -48,20 +50,82 @@ pub struct Recovery {
 /// Returns [`WalError::SnapshotConfigMismatch`] when the snapshot's
 /// configuration differs from `config`, [`WalError::Book`] when the
 /// base book cannot be built or a replayed command is rejected, and
-/// the errors of the reader scan, including
+/// the scanning errors of [`scan_log`], including
 /// [`WalError::WalSequenceGap`] at the snapshot seam.
-///
-/// # Panics
-///
-/// Stage A stub: panics until Stage B lands the implementation,
-/// whose documentation states its own panic surface.
 pub fn recover(
     config: BookConfig,
     snapshot: Option<SnapshotState>,
     wal_bytes: &[u8],
 ) -> Result<Recovery, WalError> {
-    let _ = (config, snapshot, wal_bytes);
-    panic!("M3 Stage A stub: recovery lands in Stage B")
+    let (mut book, base_seq, snapshot_seq) = match snapshot {
+        Some(state) => {
+            if let Some(err) = config_mismatch(&state.config, &config) {
+                return Err(err);
+            }
+            let base_seq = state
+                .next_seq
+                .checked_sub(1)
+                .ok_or(WalError::CorruptSnapshot {
+                    detail: SnapshotCorruption::NextSeqMismatch {
+                        last_included_seq: 0,
+                        next_seq: 0,
+                    },
+                })?;
+            let book = Book::from_snapshot_state(state)
+                .map_err(|source| WalError::Book { seq: None, source })?;
+            (book, base_seq, Some(base_seq))
+        }
+        None => {
+            let book = Book::new(config).map_err(|source| WalError::Book { seq: None, source })?;
+            (book, 0, None)
+        }
+    };
+    let scan = scan_log(wal_bytes)?;
+    // The scratch event buffer is discarded frame by frame; it is
+    // sized for the worst case a single command can emit (section 7.9
+    // of the architecture: two events per resting order touched, plus
+    // the terminal event).
+    let mut scratch: Vec<ExecutionEvent> = Vec::with_capacity(2 * (config.max_orders as usize) + 2);
+    let mut frames_skipped = 0usize;
+    let mut frames_applied = 0usize;
+    let mut last_recovered_seq = base_seq;
+    for frame in &scan.frames {
+        if frame.seq <= base_seq {
+            frames_skipped += 1;
+            continue;
+        }
+        let expected = last_recovered_seq.wrapping_add(1);
+        if frame.seq != expected {
+            return Err(WalError::WalSequenceGap {
+                expected,
+                found: frame.seq,
+                offset: frame.offset,
+            });
+        }
+        {
+            let mut events = EventBuffer::new(&mut scratch);
+            frame
+                .command
+                .apply(&mut book, &mut events)
+                .map_err(|source| WalError::Book {
+                    seq: Some(frame.seq),
+                    source,
+                })?;
+        }
+        scratch.clear();
+        frames_applied += 1;
+        last_recovered_seq = frame.seq;
+    }
+    Ok(Recovery {
+        book,
+        report: RecoveryReport {
+            snapshot_seq,
+            frames_skipped,
+            frames_applied,
+            discarded_trailing_bytes: scan.discarded_trailing_bytes,
+            last_recovered_seq,
+        },
+    })
 }
 
 /// Recover from files: load the snapshot at `snapshot_path` when

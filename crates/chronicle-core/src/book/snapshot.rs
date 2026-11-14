@@ -86,55 +86,36 @@ impl Book {
     /// debug builds, which a state produced by capture or by the
     /// checked snapshot decode cannot do.
     pub fn from_snapshot_state(state: SnapshotState) -> Result<Self, BookError> {
-        let mut book = Self::new(state.config)?;
-        let max_orders = state.config.max_orders;
-        let grid_len = state.config.grid_len;
+        let SnapshotState {
+            config,
+            next_seq,
+            generations,
+            free_list_head,
+            free_links,
+            levels,
+            live_orders,
+        } = state;
+        let mut book = Self::new(config)?;
+        let max_orders = config.max_orders;
+        let grid_len = config.grid_len;
         let slots = max_orders as usize;
-        if state.generations.len() != slots || state.free_links.len() != slots {
+        if generations.len() != slots || free_links.len() != slots {
             return Err(BookError::InvalidConfig {
                 field: "snapshot state",
                 rule: "generation and free link sections must cover every slot",
             });
         }
-        if state.levels.len() != grid_len as usize {
+        if levels.len() != grid_len as usize {
             return Err(BookError::InvalidConfig {
                 field: "snapshot state",
                 rule: "the level section must cover the whole grid",
             });
         }
-        // Walk the persisted free chain once: it must stay inside the
-        // slot range and visit no slot twice.
-        let mut on_chain = vec![false; slots];
-        let mut free_len = 0u32;
-        let mut cursor = state.free_list_head;
-        while cursor != NIL {
-            if cursor >= max_orders || on_chain[cursor as usize] {
-                return Err(BookError::InvalidConfig {
-                    field: "snapshot state",
-                    rule: "the free list must visit in-range slots at most once",
-                });
-            }
-            on_chain[cursor as usize] = true;
-            free_len += 1;
-            cursor = state.free_links[cursor as usize];
-        }
-        // Validate the live records before writing anything.
-        let mut is_live = vec![false; slots];
-        for record in &state.live_orders {
-            if record.slot >= max_orders || record.price_idx >= grid_len {
-                return Err(BookError::InvalidConfig {
-                    field: "snapshot state",
-                    rule: "live records must name an in-range slot and price",
-                });
-            }
-            if is_live[record.slot as usize]
-                || record.generation != state.generations[record.slot as usize]
-            {
-                return Err(BookError::InvalidConfig {
-                    field: "snapshot state",
-                    rule: "live records must be unique per slot and match its generation",
-                });
-            }
+        let (on_chain, free_len) = walk_free_chain(&free_links, free_list_head, max_orders)?;
+        let is_live = check_live_records(&live_orders, &generations, max_orders, grid_len)?;
+        // Order ids must be unique; the lookup is the witness, and it
+        // ends up holding exactly the live set.
+        for record in &live_orders {
             if book.lookup.get(record.order_id.0).is_some() {
                 return Err(BookError::InvalidConfig {
                     field: "snapshot state",
@@ -143,12 +124,11 @@ impl Book {
             }
             book.lookup
                 .insert(record.order_id.0, record.slot, record.generation)?;
-            is_live[record.slot as usize] = true;
         }
         // Generations for every slot, live and free and retired.
-        book.arena.generation.copy_from_slice(&state.generations);
+        book.arena.generation.copy_from_slice(&generations);
         // Live records into the arena columns, links included.
-        for record in &state.live_orders {
+        for record in &live_orders {
             let s = record.slot as usize;
             book.arena.state[s] = STATE_LIVE;
             book.arena.order_id[s] = record.order_id.0;
@@ -169,36 +149,95 @@ impl Book {
             }
             if on_chain[s] {
                 book.arena.state[s] = STATE_FREE;
-                book.arena.next[s] = state.free_links[s];
+                book.arena.next[s] = free_links[s];
             } else {
                 book.arena.state[s] = STATE_RETIRED;
                 book.arena.next[s] = NIL;
             }
             book.arena.prev[s] = NIL;
         }
-        let live = u32::try_from(state.live_orders.len()).unwrap_or(0);
+        let live = u32::try_from(live_orders.len()).unwrap_or(0);
         book.arena
-            .restore_bookkeeping(state.free_list_head, free_len, live);
-        // Level arrays verbatim; bitmaps recomputed from level counts,
-        // with each non-empty level's side read from its head order.
-        for (i, level) in state.levels.iter().enumerate() {
-            book.levels.head[i] = level.head;
-            book.levels.tail[i] = level.tail;
-            book.levels.qty[i] = level.qty;
-            book.levels.count[i] = level.count;
-            if level.count > 0 && level.head != NIL && is_live[level.head as usize] {
-                let idx = u32::try_from(i).unwrap_or(0);
-                match Side::from_u8(book.arena.side[level.head as usize]) {
-                    Side::Bid => book.bids.set(idx),
-                    Side::Ask => book.asks.set(idx),
-                }
-            }
-        }
-        book.next_seq = state.next_seq;
+            .restore_bookkeeping(free_list_head, free_len, live);
+        restore_levels(&mut book, &levels, &is_live);
+        book.next_seq = next_seq;
         if cfg!(debug_assertions) {
             book.debug_assert_invariants();
         }
         Ok(book)
+    }
+}
+
+/// Walk a persisted free chain once, returning which slots it
+/// visits and how many there are. The chain must stay inside the
+/// slot range and visit no slot twice.
+fn walk_free_chain(
+    free_links: &[u32],
+    head: u32,
+    max_orders: u32,
+) -> Result<(Vec<bool>, u32), BookError> {
+    let mut on_chain = vec![false; max_orders as usize];
+    let mut free_len = 0u32;
+    let mut cursor = head;
+    while cursor != NIL {
+        if cursor >= max_orders || on_chain[cursor as usize] {
+            return Err(BookError::InvalidConfig {
+                field: "snapshot state",
+                rule: "the free list must visit in-range slots at most once",
+            });
+        }
+        on_chain[cursor as usize] = true;
+        free_len += 1;
+        cursor = free_links[cursor as usize];
+    }
+    Ok((on_chain, free_len))
+}
+
+/// Validate the live records of a snapshot state, returning which
+/// slots they occupy. Each record must name an in-range slot and
+/// price, be the only record for its slot, and agree with the
+/// slot's persisted generation.
+fn check_live_records(
+    live_orders: &[LiveOrderState],
+    generations: &[u32],
+    max_orders: u32,
+    grid_len: u32,
+) -> Result<Vec<bool>, BookError> {
+    let mut is_live = vec![false; max_orders as usize];
+    for record in live_orders {
+        if record.slot >= max_orders || record.price_idx >= grid_len {
+            return Err(BookError::InvalidConfig {
+                field: "snapshot state",
+                rule: "live records must name an in-range slot and price",
+            });
+        }
+        if is_live[record.slot as usize] || record.generation != generations[record.slot as usize] {
+            return Err(BookError::InvalidConfig {
+                field: "snapshot state",
+                rule: "live records must be unique per slot and match its generation",
+            });
+        }
+        is_live[record.slot as usize] = true;
+    }
+    Ok(is_live)
+}
+
+/// Copy the level arrays into the book verbatim and rebuild the
+/// side bitmaps from the level counts, reading each non-empty
+/// level's side from its head order.
+fn restore_levels(book: &mut Book, levels: &[LevelState], is_live: &[bool]) {
+    for (i, level) in levels.iter().enumerate() {
+        book.levels.head[i] = level.head;
+        book.levels.tail[i] = level.tail;
+        book.levels.qty[i] = level.qty;
+        book.levels.count[i] = level.count;
+        if level.count > 0 && level.head != NIL && is_live[level.head as usize] {
+            let idx = u32::try_from(i).unwrap_or(0);
+            match Side::from_u8(book.arena.side[level.head as usize]) {
+                Side::Bid => book.bids.set(idx),
+                Side::Ask => book.asks.set(idx),
+            }
+        }
     }
 }
 

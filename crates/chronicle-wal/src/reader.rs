@@ -40,14 +40,47 @@ pub struct ScanOutcome {
 /// and [`WalError::WalSequenceGap`] at the first break in sequence
 /// consecutiveness. A torn tail is not an error: it is reported in
 /// [`ScanOutcome::discarded_trailing_bytes`].
-///
-/// # Panics
-///
-/// Stage A stub: panics until Stage B lands the implementation,
-/// whose documentation states its own panic surface.
 pub fn scan_log(bytes: &[u8]) -> Result<ScanOutcome, WalError> {
-    let _ = bytes;
-    panic!("M3 Stage A stub: log scanning lands in Stage B")
+    let mut frames = Vec::new();
+    let mut previous_seq: Option<u64> = None;
+    let mut pos = 0usize;
+    while pos < bytes.len() {
+        let offset = u64::try_from(pos).unwrap_or(u64::MAX);
+        match crate::frame::parse_frame(&bytes[pos..], offset)? {
+            crate::frame::FrameParse::Frame {
+                seq,
+                command,
+                frame_len,
+            } => {
+                if let Some(previous) = previous_seq
+                    && previous.checked_add(1) != Some(seq)
+                {
+                    return Err(WalError::WalSequenceGap {
+                        expected: previous.wrapping_add(1),
+                        found: seq,
+                        offset,
+                    });
+                }
+                previous_seq = Some(seq);
+                frames.push(ScannedFrame {
+                    offset,
+                    seq,
+                    command,
+                });
+                pos += frame_len;
+            }
+            crate::frame::FrameParse::CrashBoundary { discarded } => {
+                return Ok(ScanOutcome {
+                    frames,
+                    discarded_trailing_bytes: discarded,
+                });
+            }
+        }
+    }
+    Ok(ScanOutcome {
+        frames,
+        discarded_trailing_bytes: 0,
+    })
 }
 
 /// Read a log file and scan it.

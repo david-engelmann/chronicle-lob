@@ -12,11 +12,13 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use chronicle_core::{BookConfig, SnapshotState};
+use chronicle_core::{
+    BookConfig, LevelState, LiveOrderState, OrderId, ParticipantId, SnapshotState, StpPolicy,
+};
 
 use crate::crc::snapshot_crc;
-use crate::error::WalError;
-use crate::frame::stp_to_byte;
+use crate::error::{SnapshotCorruption, WalError};
+use crate::frame::{side_from_byte, stp_to_byte};
 
 /// Snapshot magic bytes, ASCII `CSNP`.
 pub const MAGIC: [u8; 4] = *b"CSNP";
@@ -130,14 +132,313 @@ pub fn encode_snapshot(state: &SnapshotState, out: &mut Vec<u8>) {
 /// Returns [`WalError::CorruptSnapshot`] for any structural or
 /// checksum failure and [`WalError::SnapshotConfigMismatch`] when a
 /// configuration field differs from `expected`.
-///
-/// # Panics
-///
-/// Stage A stub: panics until Stage B lands the implementation,
-/// whose documentation states its own panic surface.
 pub fn decode_snapshot(bytes: &[u8], expected: &BookConfig) -> Result<SnapshotState, WalError> {
-    let _ = (bytes, expected);
-    panic!("M3 Stage A stub: snapshot decoding lands in Stage B")
+    let actual_len = bytes.len();
+    if actual_len < HEADER_LEN + TRAILER_LEN {
+        return Err(corrupt(SnapshotCorruption::SizeMismatch {
+            expected: u64::try_from(HEADER_LEN + TRAILER_LEN).unwrap_or(0),
+            actual: u64::try_from(actual_len).unwrap_or(0),
+        }));
+    }
+    if bytes[0..4] != MAGIC {
+        return Err(corrupt(SnapshotCorruption::BadMagic));
+    }
+    let version = read_u16(bytes, 4);
+    if version != VERSION {
+        return Err(corrupt(SnapshotCorruption::BadVersion { found: version }));
+    }
+    let header_len = read_u16(bytes, 6);
+    if header_len != 64 {
+        return Err(corrupt(SnapshotCorruption::BadHeaderLen {
+            found: header_len,
+        }));
+    }
+    let last_included_seq = read_u64(bytes, 8);
+    let next_seq = read_u64(bytes, 16);
+    let live_count = read_u32(bytes, 24);
+    let max_orders = read_u32(bytes, 28);
+    let tick_size = read_u64(bytes, 32);
+    let grid_start_tick = read_u64(bytes, 40);
+    let grid_len = read_u32(bytes, 48);
+    let default_stp_raw = read_u32(bytes, 52);
+    let free_list_head = read_u32(bytes, 56);
+    let reserved = read_u32(bytes, 60);
+    let expected_len =
+        68u64 + 8 * u64::from(max_orders) + 20 * u64::from(grid_len) + 56 * u64::from(live_count);
+    if expected_len != u64::try_from(actual_len).unwrap_or(0) {
+        return Err(corrupt(SnapshotCorruption::SizeMismatch {
+            expected: expected_len,
+            actual: u64::try_from(actual_len).unwrap_or(0),
+        }));
+    }
+    if last_included_seq.checked_add(1) != Some(next_seq) {
+        return Err(corrupt(SnapshotCorruption::NextSeqMismatch {
+            last_included_seq,
+            next_seq,
+        }));
+    }
+    if reserved != 0 {
+        return Err(corrupt(SnapshotCorruption::NonZeroReserved {
+            field: "header.reserved",
+        }));
+    }
+    let default_stp = match default_stp_raw {
+        0 => StpPolicy::CancelIncoming,
+        1 => StpPolicy::CancelResting,
+        2 => StpPolicy::CancelBoth,
+        _ => {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "default_stp",
+            }));
+        }
+    };
+    let snapshot_config = BookConfig {
+        max_orders,
+        grid_len,
+        tick_size,
+        grid_start_tick,
+        default_stp,
+    };
+    if let Some(err) = config_mismatch(&snapshot_config, expected) {
+        return Err(err);
+    }
+    // Body sections, in the fixed order of section 10.2.
+    let slots = max_orders as usize;
+    let mut pos = HEADER_LEN;
+    let mut generations = Vec::with_capacity(slots);
+    for _ in 0..max_orders {
+        generations.push(read_u32(bytes, pos));
+        pos += 4;
+    }
+    let mut free_links = Vec::with_capacity(slots);
+    for _ in 0..max_orders {
+        free_links.push(read_u32(bytes, pos));
+        pos += 4;
+    }
+    let mut levels = Vec::with_capacity(grid_len as usize);
+    for _ in 0..grid_len {
+        let head = read_u32(bytes, pos);
+        let tail = read_u32(bytes, pos + 4);
+        if (head != u32::MAX && head >= max_orders) || (tail != u32::MAX && tail >= max_orders) {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "level list end",
+            }));
+        }
+        levels.push(LevelState {
+            head,
+            tail,
+            qty: read_u64(bytes, pos + 8),
+            count: read_u32(bytes, pos + 16),
+        });
+        pos += 20;
+    }
+    let mut live_orders = Vec::with_capacity(live_count as usize);
+    let mut live_seen = vec![false; slots];
+    let mut previous_slot: Option<u32> = None;
+    for _ in 0..live_count {
+        let slot = read_u32(bytes, pos);
+        let generation = read_u32(bytes, pos + 4);
+        let order_id = read_u64(bytes, pos + 8);
+        let participant = read_u32(bytes, pos + 16);
+        let price_idx = read_u32(bytes, pos + 20);
+        let qty = read_u64(bytes, pos + 24);
+        let side_byte = bytes[pos + 32];
+        let state_byte = bytes[pos + 33];
+        if bytes[pos + 34..pos + 40] != [0u8; 6] {
+            return Err(corrupt(SnapshotCorruption::NonZeroReserved {
+                field: "live record padding",
+            }));
+        }
+        let prev = read_u32(bytes, pos + 40);
+        let next = read_u32(bytes, pos + 44);
+        if bytes[pos + 48..pos + 56] != [0u8; 8] {
+            return Err(corrupt(SnapshotCorruption::NonZeroReserved {
+                field: "live record reserved",
+            }));
+        }
+        if slot >= max_orders {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "live record slot",
+            }));
+        }
+        if let Some(previous) = previous_slot
+            && slot <= previous
+        {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "live record order",
+            }));
+        }
+        if generation != generations[slot as usize] {
+            return Err(corrupt(SnapshotCorruption::GenerationMismatch { slot }));
+        }
+        if free_links[slot as usize] != u32::MAX {
+            return Err(corrupt(SnapshotCorruption::LiveSlotLinkNotNil { slot }));
+        }
+        let side = side_from_byte(side_byte).ok_or_else(|| {
+            corrupt(SnapshotCorruption::InvalidField {
+                field: "live record side",
+            })
+        })?;
+        if state_byte != 1 {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "live record state",
+            }));
+        }
+        if price_idx >= grid_len {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "live record price",
+            }));
+        }
+        live_seen[slot as usize] = true;
+        previous_slot = Some(slot);
+        live_orders.push(LiveOrderState {
+            slot,
+            generation,
+            order_id: OrderId(order_id),
+            participant: ParticipantId(participant),
+            price_idx,
+            qty,
+            side,
+            prev,
+            next,
+        });
+        pos += 56;
+    }
+    // The free list, walked exactly (section 10.4): it visits the
+    // free slots, each once, never a live slot, and every remaining
+    // non-live slot must be a retired slot (generation at the maximum,
+    // link NIL), which is how a snapshot tells free from retired when
+    // the format carries no per-slot state section.
+    let mut visited = vec![false; slots];
+    let mut cursor = free_list_head;
+    while cursor != u32::MAX {
+        if cursor >= max_orders {
+            return Err(corrupt(SnapshotCorruption::FreeListInvalid {
+                reason: "the chain leaves the slot range",
+            }));
+        }
+        if live_seen[cursor as usize] {
+            return Err(corrupt(SnapshotCorruption::FreeListInvalid {
+                reason: "the chain visits a live slot",
+            }));
+        }
+        if visited[cursor as usize] {
+            return Err(corrupt(SnapshotCorruption::FreeListInvalid {
+                reason: "the chain cycles",
+            }));
+        }
+        visited[cursor as usize] = true;
+        cursor = free_links[cursor as usize];
+    }
+    for slot in 0..max_orders {
+        let s = slot as usize;
+        if !live_seen[s] && !visited[s] {
+            if generations[s] != u32::MAX {
+                return Err(corrupt(SnapshotCorruption::FreeListInvalid {
+                    reason: "a free slot is missing from the chain",
+                }));
+            }
+            if free_links[s] != u32::MAX {
+                return Err(corrupt(SnapshotCorruption::FreeListInvalid {
+                    reason: "a retired slot carries a link",
+                }));
+            }
+        }
+    }
+    // The checksum is validated last (section 10.4).
+    let stored_crc = read_u32(bytes, actual_len - TRAILER_LEN);
+    let computed_crc = snapshot_crc(&bytes[..actual_len - TRAILER_LEN]);
+    if computed_crc != stored_crc {
+        return Err(corrupt(SnapshotCorruption::CrcMismatch {
+            expected_crc: computed_crc,
+            actual_crc: stored_crc,
+        }));
+    }
+    Ok(SnapshotState {
+        config: *expected,
+        next_seq,
+        generations,
+        free_list_head,
+        free_links,
+        levels,
+        live_orders,
+    })
+}
+
+/// Compare a snapshot's configuration against the caller's, field by
+/// field, returning the mismatch error for the first field that
+/// differs (section 10.4 and INV-SNAP-5). Shared by snapshot decoding
+/// and by recovery, which receives an already decoded state.
+pub fn config_mismatch(snapshot_config: &BookConfig, book_config: &BookConfig) -> Option<WalError> {
+    let fields: [(&'static str, u64, u64); 5] = [
+        (
+            "max_orders",
+            u64::from(snapshot_config.max_orders),
+            u64::from(book_config.max_orders),
+        ),
+        (
+            "tick_size",
+            snapshot_config.tick_size,
+            book_config.tick_size,
+        ),
+        (
+            "grid_start_tick",
+            snapshot_config.grid_start_tick,
+            book_config.grid_start_tick,
+        ),
+        (
+            "grid_len",
+            u64::from(snapshot_config.grid_len),
+            u64::from(book_config.grid_len),
+        ),
+        (
+            "default_stp",
+            u64::from(stp_to_byte(snapshot_config.default_stp)),
+            u64::from(stp_to_byte(book_config.default_stp)),
+        ),
+    ];
+    for (field, snapshot_value, book_value) in fields {
+        if snapshot_value != book_value {
+            return Some(WalError::SnapshotConfigMismatch {
+                field,
+                snapshot_value,
+                book_value,
+            });
+        }
+    }
+    None
+}
+
+/// Shorthand for a corruption error.
+fn corrupt(detail: SnapshotCorruption) -> WalError {
+    WalError::CorruptSnapshot { detail }
+}
+
+/// Little-endian u16 at byte `at`; the caller guarantees the width.
+fn read_u16(bytes: &[u8], at: usize) -> u16 {
+    u16::from_le_bytes(
+        bytes[at..at + 2]
+            .try_into()
+            .expect("caller guarantees two bytes"),
+    )
+}
+
+/// Little-endian u32 at byte `at`; the caller guarantees the width.
+fn read_u32(bytes: &[u8], at: usize) -> u32 {
+    u32::from_le_bytes(
+        bytes[at..at + 4]
+            .try_into()
+            .expect("caller guarantees four bytes"),
+    )
+}
+
+/// Little-endian u64 at byte `at`; the caller guarantees the width.
+fn read_u64(bytes: &[u8], at: usize) -> u64 {
+    u64::from_le_bytes(
+        bytes[at..at + 8]
+            .try_into()
+            .expect("caller guarantees eight bytes"),
+    )
 }
 
 /// The `.tmp` sibling path used by the save protocol.
