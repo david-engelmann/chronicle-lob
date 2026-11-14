@@ -20,6 +20,8 @@ use crate::level::Levels;
 use crate::lookup::Lookup;
 use crate::types::{OrderId, OrderType, ParticipantId, Side, StpPolicy};
 
+mod snapshot;
+
 /// One aggregated price level in an L2 depth snapshot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DepthLevel {

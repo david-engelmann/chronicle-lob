@@ -40,4 +40,6 @@ pub use book::{Book, DepthLevel};
 pub use config::BookConfig;
 pub use error::BookError;
 pub use events::{CancelReason, EventBuffer, ExecutionEvent};
-pub use types::{OrderId, OrderType, ParticipantId, Side, StpPolicy};
+pub use types::{
+    LevelState, LiveOrderState, OrderId, OrderType, ParticipantId, Side, SnapshotState, StpPolicy,
+};

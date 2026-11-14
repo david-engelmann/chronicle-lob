@@ -41,7 +41,7 @@ rust-toolchain.toml):
 | Crate | Kind | Dependencies | Role |
 | --- | --- | --- | --- |
 | chronicle-core | library | none, std only | Arena, lookup table, price bitmaps, matching engine, events, errors. No I/O, no clock, no randomness. |
-| chronicle-wal | library | chronicle-core, crc32fast | WAL frame writer and reader, snapshot writer and loader, recovery driver. Owns all file I/O for durable state. |
+| chronicle-wal | library | chronicle-core | WAL frame writer and reader, snapshot writer and loader, recovery driver. Owns all file I/O for durable state. |
 | chronicle-cli | binary | chronicle-core, chronicle-wal, clap, serde_json | Replay, verify, snapshot, and benchmark commands. The only crate that parses text or prints JSON. |
 
 Dependency direction is one way: cli depends on wal and core, wal depends
@@ -64,6 +64,7 @@ this by parsing crates/chronicle-core/Cargo.toml in the zero-dep-core job.
 | level.rs | Per-price-level aggregate state (head, tail, total quantity, order count). |
 | events.rs | ExecutionEvent and the caller-owned EventBuffer with its capacity contract (section 7.6). |
 | book.rs | The Book state machine: add, cancel, amend, cancel_by_participant, match loop, L2 depth queries, debug_assert_invariants. |
+| book/snapshot.rs | Snapshot capture and restore on Book: reads the arena, levels, and free list into the SnapshotState transfer shape, and rebuilds a book from a validated state (section 10). A child module of book.rs so it works on the private fields directly. |
 | reference_book.rs | A deliberately simple BTreeMap based reference book, compiled only under cfg(test) and used as the property-test oracle. Never shipped in the public API. |
 
 ### 2.2 chronicle-wal modules
@@ -72,7 +73,7 @@ this by parsing crates/chronicle-core/Cargo.toml in the zero-dep-core job.
 | --- | --- |
 | lib.rs | Crate documentation, public re-exports, forbid(unsafe_code). |
 | frame.rs | Frame header and payload encode and decode for the byte format in section 9. Pure byte logic, no file I/O, unit tested against golden vectors. |
-| crc.rs | CRC32C (Castagnoli) via crc32fast, with the domain-separation prefixes from sections 9.3 and 10.2 applied at this layer only. |
+| crc.rs | CRC32C (Castagnoli), a local table-driven implementation in this module, with the domain-separation prefixes from sections 9.3 and 10.2 applied at this layer only. |
 | writer.rs | WalWriter: appends frames to a file, reused encode buffer, configurable sync policy (section 9.4). |
 | reader.rs | WalReader and the recovery scan: crash boundary versus corruption decision table (section 9.5). |
 | snapshot.rs | Snapshot save and load: atomic write protocol, structural restore, CRC validation (section 10). |
@@ -655,7 +656,11 @@ the two can never disagree.
 ### 9.3 CRC32C and domain separation
 
 The checksum is CRC32C (Castagnoli polynomial 0x1EDC6F41, reflected
-0x82F63B78), computed by the crc32fast crate in chronicle-wal only. The
+0x82F63B78), computed by a local table-driven implementation in
+chronicle-wal's crc.rs. An earlier draft of this section named the
+crc32fast crate, which computes the IEEE polynomial rather than
+Castagnoli, so the crate is not used; the polynomial and the golden
+vectors are what the format pins. The
 CRC input is, in order: the ASCII domain prefix "chronicle-wal/v1"
 followed by one zero byte, then header bytes 0..28, then the payload.
 Domain separation means a snapshot CRC can never validate as a WAL CRC

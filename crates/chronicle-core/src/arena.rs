@@ -101,6 +101,18 @@ impl Arena {
         self.free_head
     }
 
+    /// Overwrite the free list head and the live and free counters in
+    /// one step, during snapshot restore (ARCHITECTURE.md section
+    /// 10.4). The caller has already written the columns and the per
+    /// slot states and links to match the persisted snapshot exactly;
+    /// this setter exists because the three counters are private, and
+    /// it keeps them consistent with each other by construction.
+    pub const fn restore_bookkeeping(&mut self, free_head: u32, free_len: u32, live: u32) {
+        self.free_head = free_head;
+        self.free_len = free_len;
+        self.live = live;
+    }
+
     /// True when `slot` currently holds a live order.
     pub fn is_live(&self, slot: u32) -> bool {
         self.state[slot as usize] == STATE_LIVE

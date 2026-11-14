@@ -76,3 +76,76 @@ pub enum StpPolicy {
     /// Cancel both the resting own order and the incoming remainder.
     CancelBoth,
 }
+
+/// Structural state of one live order, as persisted in a snapshot
+/// (ARCHITECTURE.md section 10.2, live slot records).
+///
+/// Slot indices and links are raw `u32` arena indices; `prev` and
+/// `next` are `u32::MAX` (the arena NIL) at the ends of a level list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LiveOrderState {
+    /// Arena slot the order occupies.
+    pub slot: u32,
+    /// Generation of the slot at capture time.
+    pub generation: u32,
+    /// The order's caller-supplied id.
+    pub order_id: OrderId,
+    /// The order's owner.
+    pub participant: ParticipantId,
+    /// Dense tick index of the order's price level.
+    pub price_idx: u32,
+    /// Remaining quantity.
+    pub qty: u64,
+    /// Which side the order rests on.
+    pub side: Side,
+    /// Previous slot in the level list, or NIL.
+    pub prev: u32,
+    /// Next slot in the level list, or NIL.
+    pub next: u32,
+}
+
+/// One price level's persisted state (ARCHITECTURE.md section 10.2,
+/// level arrays): list ends, aggregate quantity, and order count.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LevelState {
+    /// First slot at the level, or NIL when the level is empty.
+    pub head: u32,
+    /// Last slot at the level, or NIL when the level is empty.
+    pub tail: u32,
+    /// Sum of remaining quantities at the level.
+    pub qty: u64,
+    /// Number of live orders at the level.
+    pub count: u32,
+}
+
+/// The complete structural state of a [`crate::Book`], captured for
+/// persistence by `chronicle-wal` (ARCHITECTURE.md section 10).
+///
+/// This is a plain data transfer shape: the byte format, its
+/// validation, and its CRC live in `chronicle-wal`; the book only
+/// captures and restores its own internals through it, so a restore
+/// reproduces slot assignment, FIFO links, generations, and the
+/// exact free list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SnapshotState {
+    /// The configuration the book was built with.
+    pub config: crate::config::BookConfig,
+    /// Sequence number the next accepted command will take.
+    pub next_seq: u64,
+    /// Generation of every slot, free, live, and retired alike, in
+    /// slot order. Length is `config.max_orders`.
+    pub generations: Vec<u32>,
+    /// Head of the free list in allocation order, or NIL when no slot
+    /// is free.
+    pub free_list_head: u32,
+    /// Per-slot free list link, in slot order: for a free slot, the
+    /// next free slot in allocation order or NIL at the end of the
+    /// chain; NIL for live and retired slots. Length is
+    /// `config.max_orders`.
+    pub free_links: Vec<u32>,
+    /// Per-level state in tick index order. Length is
+    /// `config.grid_len`.
+    pub levels: Vec<LevelState>,
+    /// Every live order, in ascending slot order.
+    pub live_orders: Vec<LiveOrderState>,
+}

@@ -3,7 +3,7 @@
 # chronicle-cli (M4). See docs/ARCHITECTURE.md section 2.
 [workspace]
 resolver = "3"
-members = ["crates/chronicle-core"]
+members = ["crates/chronicle-core", "crates/chronicle-wal"]
 
 # Lint posture: docs/ARCHITECTURE.md section 2.4. Crates opt in with
 # [lints] workspace = true in their own Cargo.toml.
