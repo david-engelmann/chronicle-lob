@@ -126,10 +126,9 @@ mod tests {
             let complete = frame_ends.iter().filter(|&&end| end <= cut).count();
             let last_end = frame_ends
                 .iter()
-                .filter(|&&end| end <= cut)
-                .next_back()
-                .copied()
-                .unwrap_or(0);
+                .rev()
+                .find(|&&end| end <= cut)
+                .map_or(0, |&&end| end);
             assert_eq!(outcome.frames.len(), complete, "cut {cut}");
             assert_eq!(
                 outcome.discarded_trailing_bytes,
