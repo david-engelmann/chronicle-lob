@@ -208,7 +208,9 @@ mod tests {
         // INV-ALLOC-3 (Milestone 3 half): after the buffer warms to
         // the largest frame, 10,000 appends never grow it.
         let mut writer = WalWriter::new(CountingSink::default(), SyncPolicy::Never);
-        writer.append(&add(1), 1).expect("warm up with the largest kind");
+        writer
+            .append(&add(1), 1)
+            .expect("warm up with the largest kind");
         let warmed = writer.buffer_capacity();
         assert!(warmed >= 72, "an add frame is 72 bytes");
         for seq in 2..=10_000u64 {

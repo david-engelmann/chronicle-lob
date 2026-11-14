@@ -78,9 +78,10 @@ pub enum StpPolicy {
 }
 
 /// Structural state of one live order, as persisted in a snapshot
-/// (ARCHITECTURE.md section 10.2, live slot records). Slot indices and
-/// links are raw `u32` arena indices; `prev` and `next` are
-/// `u32::MAX` (the arena NIL) at the ends of a level list.
+/// (ARCHITECTURE.md section 10.2, live slot records).
+///
+/// Slot indices and links are raw `u32` arena indices; `prev` and
+/// `next` are `u32::MAX` (the arena NIL) at the ends of a level list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LiveOrderState {
     /// Arena slot the order occupies.
@@ -118,11 +119,13 @@ pub struct LevelState {
 }
 
 /// The complete structural state of a [`crate::Book`], captured for
-/// persistence by `chronicle-wal` (ARCHITECTURE.md section 10). This
-/// is a plain data transfer shape: the byte format, its validation,
-/// and its CRC live in `chronicle-wal`; the book only captures and
-/// restores its own internals through it, so a restore reproduces
-/// slot assignment, FIFO links, generations, and the exact free list.
+/// persistence by `chronicle-wal` (ARCHITECTURE.md section 10).
+///
+/// This is a plain data transfer shape: the byte format, its
+/// validation, and its CRC live in `chronicle-wal`; the book only
+/// captures and restores its own internals through it, so a restore
+/// reproduces slot assignment, FIFO links, generations, and the
+/// exact free list.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SnapshotState {
     /// The configuration the book was built with.

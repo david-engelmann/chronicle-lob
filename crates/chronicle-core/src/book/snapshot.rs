@@ -79,9 +79,15 @@ impl Book {
     /// disagrees with the configuration it carries. Both are
     /// unreachable for a state produced by capture or by the checked
     /// snapshot decode.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the state fails the structural invariant check in
+    /// debug builds, which a state produced by capture or by the
+    /// checked snapshot decode cannot do.
     pub fn from_snapshot_state(state: SnapshotState) -> Result<Self, BookError> {
-        let _ = state;
-        panic!("M3 Stage A stub: snapshot restore lands in Stage B")
+        let SnapshotState { next_seq, .. } = state;
+        panic!("M3 Stage A stub: snapshot restore lands in Stage B (state next_seq {next_seq})")
     }
 }
 
@@ -157,10 +163,12 @@ mod tests {
             assert_eq!(*link, expected, "free link of slot {i}");
         }
         assert_eq!(state.levels.len(), 640);
-        assert!(state
-            .levels
-            .iter()
-            .all(|l| l.head == NIL && l.tail == NIL && l.qty == 0 && l.count == 0));
+        assert!(
+            state
+                .levels
+                .iter()
+                .all(|l| l.head == NIL && l.tail == NIL && l.qty == 0 && l.count == 0)
+        );
         assert!(state.live_orders.is_empty());
     }
 

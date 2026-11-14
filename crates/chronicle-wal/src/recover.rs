@@ -75,8 +75,7 @@ pub fn recover_from_files(
         Some(path) => Some(load_snapshot(path, &config)?),
         None => None,
     };
-    let wal_bytes =
-        std::fs::read(wal_path).map_err(|e| WalError::io("read WAL file", e))?;
+    let wal_bytes = std::fs::read(wal_path).map_err(|e| WalError::io("read WAL file", e))?;
     recover(config, snapshot, &wal_bytes)
 }
 
@@ -125,7 +124,9 @@ mod tests {
         let script = [
             add(1),
             add(2),
-            WalCommand::Cancel { order_id: OrderId(1) },
+            WalCommand::Cancel {
+                order_id: OrderId(1),
+            },
             add(3),
             WalCommand::Amend {
                 order_id: OrderId(2),
@@ -154,7 +155,12 @@ mod tests {
         let log = log_of(&[
             (add(1), 1),
             (add(2), 2),
-            (WalCommand::Cancel { order_id: OrderId(1) }, 3),
+            (
+                WalCommand::Cancel {
+                    order_id: OrderId(1),
+                },
+                3,
+            ),
             (add(3), 4),
             (
                 WalCommand::Amend {

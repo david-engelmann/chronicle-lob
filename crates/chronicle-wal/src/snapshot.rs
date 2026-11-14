@@ -48,9 +48,7 @@ pub enum SaveStep {
 /// 10.2).
 #[must_use]
 pub fn encoded_len(state: &SnapshotState) -> usize {
-    68 + 8 * state.generations.len()
-        + 20 * state.levels.len()
-        + 56 * state.live_orders.len()
+    68 + 8 * state.generations.len() + 20 * state.levels.len() + 56 * state.live_orders.len()
 }
 
 /// Encode `state` into `out`, clearing any previous content. The
@@ -233,10 +231,8 @@ mod tests {
 
     /// A unique scratch directory under the system temp dir.
     fn scratch(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "chronicle-wal-test-{}-{tag}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("chronicle-wal-test-{}-{tag}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create scratch dir");
         dir
     }
@@ -300,7 +296,11 @@ mod tests {
         assert_eq!(&out[16..24], &7u64.to_le_bytes(), "next_seq");
         assert_eq!(&out[24..28], &1u32.to_le_bytes(), "live_order_count");
         assert_eq!(&out[28..32], &2u32.to_le_bytes(), "max_orders");
-        assert_eq!(&out[52..56], &1u32.to_le_bytes(), "default_stp cancel resting");
+        assert_eq!(
+            &out[52..56],
+            &1u32.to_le_bytes(),
+            "default_stp cancel resting"
+        );
         assert_eq!(&out[56..60], &1u32.to_le_bytes(), "free_list_head");
         assert_eq!(&out[60..64], &[0u8; 4], "reserved");
         // Body: generations, then free links.
@@ -392,9 +392,7 @@ mod tests {
         let dir = scratch("crash-steps");
         let path = dir.join("book.csnp");
         let config = test_config();
-        let old_state = Book::new(config)
-            .expect("book")
-            .capture_snapshot_state();
+        let old_state = Book::new(config).expect("book").capture_snapshot_state();
         save_snapshot(&path, &old_state).expect("initial save");
         let mut new_book = Book::new(config).expect("book");
         {
@@ -442,9 +440,7 @@ mod tests {
         let dir = scratch("tmp-ignore");
         let path = dir.join("book.csnp");
         let config = test_config();
-        let state = Book::new(config)
-            .expect("book")
-            .capture_snapshot_state();
+        let state = Book::new(config).expect("book").capture_snapshot_state();
         save_snapshot(&path, &state).expect("save");
         let mut tmp_name = path.as_os_str().to_owned();
         tmp_name.push(".tmp");
@@ -503,8 +499,8 @@ mod tests {
             ),
         ];
         for (field, expected_config) in cases {
-            let err = decode_snapshot(&out, &expected_config)
-                .expect_err(&format!("{field} differs"));
+            let err =
+                decode_snapshot(&out, &expected_config).expect_err(&format!("{field} differs"));
             match err {
                 WalError::SnapshotConfigMismatch { field: named, .. } => {
                     assert_eq!(named, field);
@@ -522,17 +518,38 @@ mod tests {
         let config = test_config();
         let mut book = Book::new(config).expect("book");
         let mut run = |book: &mut Book,
-                       f: &dyn Fn(&mut Book, &mut EventBuffer<'_>) -> Result<usize, chronicle_core::BookError>| {
+                       f: &dyn Fn(
+            &mut Book,
+            &mut EventBuffer<'_>,
+        ) -> Result<usize, chronicle_core::BookError>| {
             let mut storage = Vec::with_capacity(64);
             let mut events = EventBuffer::new(&mut storage);
             f(book, &mut events).expect("command");
         };
         run(&mut book, &|b, e| {
-            b.add_order(OrderId(1), ParticipantId(1), Side::Bid, OrderType::Limit, 100, 5, None, e)
+            b.add_order(
+                OrderId(1),
+                ParticipantId(1),
+                Side::Bid,
+                OrderType::Limit,
+                100,
+                5,
+                None,
+                e,
+            )
         });
         run(&mut book, &|b, e| b.cancel_order(OrderId(1), e));
         run(&mut book, &|b, e| {
-            b.add_order(OrderId(2), ParticipantId(1), Side::Bid, OrderType::Limit, 100, 5, None, e)
+            b.add_order(
+                OrderId(2),
+                ParticipantId(1),
+                Side::Bid,
+                OrderType::Limit,
+                100,
+                5,
+                None,
+                e,
+            )
         });
         let state = book.capture_snapshot_state();
         assert_eq!(state.live_orders[0].generation, 2, "slot 0 was reused once");
@@ -546,8 +563,17 @@ mod tests {
             let mut storage = Vec::with_capacity(64);
             {
                 let mut events = EventBuffer::new(&mut storage);
-                book.add_order(OrderId(3), ParticipantId(2), Side::Ask, OrderType::Limit, 101, 5, None, &mut events)
-                    .expect("add");
+                book.add_order(
+                    OrderId(3),
+                    ParticipantId(2),
+                    Side::Ask,
+                    OrderType::Limit,
+                    101,
+                    5,
+                    None,
+                    &mut events,
+                )
+                .expect("add");
             }
             book.capture_snapshot_state()
         };

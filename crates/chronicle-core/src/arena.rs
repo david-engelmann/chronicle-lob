@@ -107,7 +107,7 @@ impl Arena {
     /// slot states and links to match the persisted snapshot exactly;
     /// this setter exists because the three counters are private, and
     /// it keeps them consistent with each other by construction.
-    pub fn restore_bookkeeping(&mut self, free_head: u32, free_len: u32, live: u32) {
+    pub const fn restore_bookkeeping(&mut self, free_head: u32, free_len: u32, live: u32) {
         self.free_head = free_head;
         self.free_len = free_len;
         self.live = live;

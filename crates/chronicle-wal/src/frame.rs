@@ -117,11 +117,7 @@ impl WalCommand {
     /// # Errors
     ///
     /// Returns the [`BookError`] the book returns, unchanged.
-    pub fn apply(
-        &self,
-        book: &mut Book,
-        events: &mut EventBuffer<'_>,
-    ) -> Result<usize, BookError> {
+    pub fn apply(&self, book: &mut Book, events: &mut EventBuffer<'_>) -> Result<usize, BookError> {
         match *self {
             Self::Add {
                 order_id,
@@ -323,11 +319,11 @@ mod tests {
         assert_eq!(&out[0..28], &expected_header[..]);
         let expected_payload: [u8; 40] = [
             1, 0, 0, 0, 0, 0, 0, 0, // order id 1
-            7, 0, 0, 0, // participant 7
-            1, // side ask
-            0, // type limit
+            7, 0, 0, 0,   // participant 7
+            1,   // side ask
+            0,   // type limit
             255, // stp: book default
-            0, // reserved
+            0,   // reserved
             100, 0, 0, 0, 0, 0, 0, 0, // price 100
             10, 0, 0, 0, 0, 0, 0, 0, // qty 10
             0, 0, 0, 0, 0, 0, 0, 0, // reserved
@@ -338,7 +334,13 @@ mod tests {
 
         // Cancel frame: kind 2, 16 byte payload.
         let mut out = Vec::new();
-        encode_frame(&WalCommand::Cancel { order_id: OrderId(9) }, 2, &mut out);
+        encode_frame(
+            &WalCommand::Cancel {
+                order_id: OrderId(9),
+            },
+            2,
+            &mut out,
+        );
         assert_eq!(out.len(), 48);
         assert_eq!(out[20], KIND_CANCEL);
         assert_eq!(&out[32..40], &9u64.to_le_bytes());
@@ -393,7 +395,12 @@ mod tests {
     fn encode_decode_roundtrip() {
         let commands = [
             (sample_add(), 1u64),
-            (WalCommand::Cancel { order_id: OrderId(9) }, 2),
+            (
+                WalCommand::Cancel {
+                    order_id: OrderId(9),
+                },
+                2,
+            ),
             (
                 WalCommand::CancelByParticipant {
                     participant: ParticipantId(3),

@@ -90,7 +90,12 @@ mod tests {
     fn three_frame_log() -> Vec<u8> {
         log_of(&[
             (add(1), 1),
-            (WalCommand::Cancel { order_id: OrderId(1) }, 2),
+            (
+                WalCommand::Cancel {
+                    order_id: OrderId(1),
+                },
+                2,
+            ),
             (
                 WalCommand::Amend {
                     order_id: OrderId(2),
@@ -114,9 +119,18 @@ mod tests {
             let outcome = scan_log(&log[..cut])
                 .unwrap_or_else(|e| panic!("cut {cut} must scan clean, got {e}"));
             let complete = frame_ends.iter().filter(|&&end| end <= cut).count();
-            let last_end = frame_ends.iter().filter(|&&end| end <= cut).last().copied().unwrap_or(0);
+            let last_end = frame_ends
+                .iter()
+                .filter(|&&end| end <= cut)
+                .last()
+                .copied()
+                .unwrap_or(0);
             assert_eq!(outcome.frames.len(), complete, "cut {cut}");
-            assert_eq!(outcome.discarded_trailing_bytes, cut - last_end, "cut {cut}");
+            assert_eq!(
+                outcome.discarded_trailing_bytes,
+                cut - last_end,
+                "cut {cut}"
+            );
             for (i, frame) in outcome.frames.iter().enumerate() {
                 assert_eq!(frame.seq, (i + 1) as u64, "cut {cut}");
             }
@@ -129,13 +143,21 @@ mod tests {
         // valid log is corruption at a frame offset, caught by the
         // field checks or the checksum, never accepted and never a
         // crash boundary.
-        let log = log_of(&[(add(1), 1), (WalCommand::Cancel { order_id: OrderId(1) }, 2)]);
+        let log = log_of(&[
+            (add(1), 1),
+            (
+                WalCommand::Cancel {
+                    order_id: OrderId(1),
+                },
+                2,
+            ),
+        ]);
         assert_eq!(log.len(), 120);
         for pos in 0..log.len() {
             let mut damaged = log.clone();
             damaged[pos] = damaged[pos].wrapping_add(1);
-            let err = scan_log(&damaged)
-                .expect_err(&format!("flip at byte {pos} must be corruption"));
+            let err =
+                scan_log(&damaged).expect_err(&format!("flip at byte {pos} must be corruption"));
             assert!(
                 matches!(err, WalError::CorruptWalRecord { .. }),
                 "flip at byte {pos} gave {err:?}"
@@ -163,29 +185,33 @@ mod tests {
         // byte in a one byte fragment.
         let first = log_of(&[(add(1), 1)]);
         let mut second_frame = Vec::new();
-        encode_frame(&WalCommand::Cancel { order_id: OrderId(1) }, 2, &mut second_frame);
+        encode_frame(
+            &WalCommand::Cancel {
+                order_id: OrderId(1),
+            },
+            2,
+            &mut second_frame,
+        );
         // Byte positions inside a header whose values are fixed by
         // the format: magic 0..4, version 4..6, header length 6..8,
         // kind 20, flags 21, reserved 22..28.
-        let fixed_positions = [
-            0usize, 1, 2, 3, 4, 5, 6, 7, 20, 21, 22, 23, 24, 25, 26, 27,
-        ];
+        let fixed_positions = [0usize, 1, 2, 3, 4, 5, 6, 7, 20, 21, 22, 23, 24, 25, 26, 27];
         for len in 1..32usize {
             let mut log = first.clone();
             log.extend_from_slice(&second_frame[..len]);
             let outcome = scan_log(&log).expect("prefix-valid fragment is a crash boundary");
             assert_eq!(outcome.frames.len(), 1, "fragment length {len}");
-            assert_eq!(outcome.discarded_trailing_bytes, len, "fragment length {len}");
+            assert_eq!(
+                outcome.discarded_trailing_bytes, len,
+                "fragment length {len}"
+            );
             for &pos in fixed_positions.iter().filter(|&&p| p < len) {
                 let mut damaged = log.clone();
                 damaged[first.len() + pos] = damaged[first.len() + pos].wrapping_add(1);
                 let err = scan_log(&damaged)
                     .expect_err(&format!("fragment {len} with byte {pos} flipped"));
                 assert!(
-                    matches!(
-                        err,
-                        WalError::CorruptWalRecord { offset: 72, .. }
-                    ),
+                    matches!(err, WalError::CorruptWalRecord { offset: 72, .. }),
                     "fragment {len} byte {pos} gave {err:?}"
                 );
             }
@@ -199,7 +225,12 @@ mod tests {
         // and the frame offset.
         let log = log_of(&[
             (add(1), 1),
-            (WalCommand::Cancel { order_id: OrderId(1) }, 2),
+            (
+                WalCommand::Cancel {
+                    order_id: OrderId(1),
+                },
+                2,
+            ),
             (add(2), 4),
         ]);
         let err = scan_log(&log).expect_err("seq 3 is missing");
@@ -213,7 +244,12 @@ mod tests {
         }
         let log = log_of(&[
             (add(1), 1),
-            (WalCommand::Cancel { order_id: OrderId(1) }, 2),
+            (
+                WalCommand::Cancel {
+                    order_id: OrderId(1),
+                },
+                2,
+            ),
             (add(2), 2),
         ]);
         let err = scan_log(&log).expect_err("seq 2 repeats");
