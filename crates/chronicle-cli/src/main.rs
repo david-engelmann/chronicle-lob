@@ -15,7 +15,7 @@ use std::process::ExitCode;
 use clap::{Arg, ArgMatches, Command};
 
 /// Build the argument parser. Every subcommand accepts `--seed`,
-/// which honours the SIM_SEED environment variable, per section 2.3.
+/// which honours the `SIM_SEED` environment variable, per section 2.3.
 fn parser() -> Command {
     let seed = Arg::new("seed")
         .long("seed")

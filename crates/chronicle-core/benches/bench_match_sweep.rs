@@ -4,6 +4,10 @@
 //! of maker orders filled.
 
 #![forbid(unsafe_code)]
+#![allow(
+    missing_docs,
+    reason = "criterion_group! generates the bench entry function without documentation"
+)]
 
 use chronicle_core::{
     Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId, Side,

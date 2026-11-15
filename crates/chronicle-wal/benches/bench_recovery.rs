@@ -3,6 +3,10 @@
 //! replayed into a fresh book. Throughput is the log bytes read.
 
 #![forbid(unsafe_code)]
+#![allow(
+    missing_docs,
+    reason = "criterion_group! generates the bench entry function without documentation"
+)]
 
 use std::io;
 

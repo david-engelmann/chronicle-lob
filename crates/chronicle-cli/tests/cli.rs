@@ -5,7 +5,7 @@
 //! reproduce it from the files alone.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Output};
 
 use chronicle_core::{

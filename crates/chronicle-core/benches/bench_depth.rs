@@ -3,6 +3,10 @@
 //! 200 active levels. Throughput is the levels returned per query.
 
 #![forbid(unsafe_code)]
+#![allow(
+    missing_docs,
+    reason = "criterion_group! generates the bench entry function without documentation"
+)]
 
 use chronicle_core::{
     Book, BookConfig, DepthLevel, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId,

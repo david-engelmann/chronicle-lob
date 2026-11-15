@@ -4,6 +4,10 @@
 //! Throughput is the frame bytes written per append.
 
 #![forbid(unsafe_code)]
+#![allow(
+    missing_docs,
+    reason = "criterion_group! generates the bench entry function without documentation"
+)]
 
 use std::io;
 
