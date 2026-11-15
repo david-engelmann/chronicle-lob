@@ -16,7 +16,7 @@ use chronicle_wal::{SyncPolicy, WalCommand, WalWriter, load_snapshot, save_snaps
 
 const BIN: &str = env!("CARGO_BIN_EXE_chronicle-cli");
 
-fn config() -> BookConfig {
+const fn config() -> BookConfig {
     BookConfig {
         max_orders: 64,
         grid_len: 640,
@@ -37,7 +37,7 @@ const CONFIG_FLAGS: [&str; 8] = [
     "1",
 ];
 
-fn reason_token(reason: CancelReason) -> &'static str {
+const fn reason_token(reason: CancelReason) -> &'static str {
     match reason {
         CancelReason::Requested => "requested",
         CancelReason::ByParticipant => "by-participant",
@@ -106,7 +106,7 @@ fn test_dir(name: &str) -> PathBuf {
     dir
 }
 
-fn add(order_id: u64, participant: u32, side: Side, price: u64, qty: u64) -> WalCommand {
+const fn add(order_id: u64, participant: u32, side: Side, price: u64, qty: u64) -> WalCommand {
     WalCommand::Add {
         order_id: OrderId(order_id),
         participant: ParticipantId(participant),
@@ -371,10 +371,10 @@ fn bench_refs(args: &[String]) -> Vec<&str> {
 
 fn field(text: &str, name: &str) -> u64 {
     for line in text.lines() {
-        if let Some((key, value)) = line.split_once('=') {
-            if key == name {
-                return value.parse().expect("numeric field");
-            }
+        if let Some((key, value)) = line.split_once('=')
+            && key == name
+        {
+            return value.parse().expect("numeric field");
         }
     }
     panic!("field {name} missing from: {text}");

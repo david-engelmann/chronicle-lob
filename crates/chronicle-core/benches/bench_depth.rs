@@ -62,7 +62,11 @@ fn depth_book() -> (Book, Vec<DepthLevel>) {
         }
     }
     let mut out: Vec<DepthLevel> = Vec::new();
-    out.resize_with(100, DepthLevel::default);
+    out.resize_with(100, || DepthLevel {
+        price: 0,
+        total_qty: 0,
+        order_count: 0,
+    });
     (book, out)
 }
 
