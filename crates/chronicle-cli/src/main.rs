@@ -187,7 +187,7 @@ fn config_from_flags(sub: &ArgMatches) -> BookConfig {
     }
 }
 
-fn fail(message: String) -> ExitCode {
+fn fail(message: &str) -> ExitCode {
     eprintln!("error: {message}");
     ExitCode::from(2)
 }
@@ -342,7 +342,7 @@ fn replay(sub: &ArgMatches) -> Result<(), String> {
 fn run_replay(sub: &ArgMatches) -> ExitCode {
     match replay(sub) {
         Ok(()) => ExitCode::SUCCESS,
-        Err(message) => fail(message),
+        Err(message) => fail(&message),
     }
 }
 
@@ -355,7 +355,7 @@ fn verify(sub: &ArgMatches) -> ExitCode {
     if let Some(path) = sub.get_one::<PathBuf>("snapshot") {
         let bytes = match fs::read(path) {
             Ok(bytes) => bytes,
-            Err(e) => return fail(format!("cannot read snapshot {}: {e}", path.display())),
+            Err(e) => return fail(&format!("cannot read snapshot {}: {e}", path.display())),
         };
         let config = match snapshot_config(&bytes) {
             Ok(config) => config,
@@ -373,11 +373,11 @@ fn verify(sub: &ArgMatches) -> ExitCode {
             Err(e) => return corrupt(&e),
         }
     } else if let Err(e) = Book::new(config_from_flags(sub)) {
-        return fail(e.to_string());
+        return fail(&e.to_string());
     }
     let bytes = match fs::read(&wal_path) {
         Ok(bytes) => bytes,
-        Err(e) => return fail(format!("cannot read log {}: {e}", wal_path.display())),
+        Err(e) => return fail(&format!("cannot read log {}: {e}", wal_path.display())),
     };
     match scan_log(&bytes) {
         Ok(outcome) => {
@@ -424,7 +424,7 @@ fn snapshot_command(sub: &ArgMatches) -> Result<(), String> {
 fn run_snapshot(sub: &ArgMatches) -> ExitCode {
     match snapshot_command(sub) {
         Ok(()) => ExitCode::SUCCESS,
-        Err(message) => fail(message),
+        Err(message) => fail(&message),
     }
 }
 
@@ -544,10 +544,7 @@ fn bench(seed: u64, ops: u64) -> Result<BenchSummary, String> {
 }
 
 fn price_or_none(price: Option<u64>) -> String {
-    match price {
-        Some(price) => price.to_string(),
-        None => "none".to_string(),
-    }
+    price.map_or_else(|| "none".to_string(), |price| price.to_string())
 }
 
 fn print_bench(seed: u64, ops: u64, summary: &BenchSummary, json: bool) {
@@ -583,7 +580,7 @@ fn run_bench(sub: &ArgMatches) -> ExitCode {
             print_bench(seed, ops, &summary, sub.get_flag("json"));
             ExitCode::SUCCESS
         }
-        Err(message) => fail(message),
+        Err(message) => fail(&message),
     }
 }
 

@@ -393,11 +393,13 @@ mod tests {
     }
 
     #[test]
-    fn construction_allocates_fixed_capacity_once() {
-        // INV-ALLOC-2: construction allocates each arena column,
-        // level array, and lookup column exactly once, at the
-        // configured capacity. The 1,000,000-operation counter proof
-        // (INV-ALLOC-1) covers the no-growth half at full capacity.
+    fn book_construction_allocates_levels_and_lookup_once() {
+        // INV-ALLOC-2 at book level: construction allocates each
+        // arena column, level array, and lookup column exactly
+        // once, at the configured capacity. The arena-level half is
+        // the arena unit test of the same invariant, and the
+        // 1,000,000-operation counter proof (INV-ALLOC-1) covers
+        // the no-growth half at full capacity.
         let cfg = test_config();
         let book = Book::new(cfg).expect("valid config builds");
         let max_orders = cfg.max_orders as usize;
