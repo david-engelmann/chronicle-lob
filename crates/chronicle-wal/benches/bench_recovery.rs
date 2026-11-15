@@ -34,7 +34,7 @@ impl WalSink for VecSink {
     }
 }
 
-fn bench_config() -> BookConfig {
+const fn bench_config() -> BookConfig {
     BookConfig {
         max_orders: 8192,
         grid_len: 640,

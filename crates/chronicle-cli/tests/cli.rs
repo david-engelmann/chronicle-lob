@@ -128,7 +128,7 @@ fn build_session(name: &str) -> Session {
     let mut book = Book::new(config()).expect("book");
     let file = fs::File::create(&wal).expect("create wal");
     let mut writer = WalWriter::new(file, SyncPolicy::Never);
-    let mut storage: Vec<ExecutionEvent> = Vec::new();
+    let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(64);
     let mut lines: Vec<String> = Vec::new();
     let mut seq = 0u64;
     let commands = [

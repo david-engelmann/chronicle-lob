@@ -14,7 +14,7 @@ use chronicle_core::{
 };
 use criterion::{BatchSize, Criterion, Throughput, black_box, criterion_group, criterion_main};
 
-fn bench_config() -> BookConfig {
+const fn bench_config() -> BookConfig {
     BookConfig {
         max_orders: 8192,
         grid_len: 640,
