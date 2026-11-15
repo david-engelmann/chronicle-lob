@@ -6,7 +6,7 @@
 //! unsafe code, and counts only the thread running this test, so
 //! parallel tests cannot pollute the count. The mechanism is the
 //! entry condition m6 decision recorded for Milestone 4: the same
-//! pattern chronicle-wal's alloc_proof target proved at M3,
+//! pattern chronicle-wal's `alloc_proof` target proved at M3,
 //! extended here to the core engine.
 #![allow(
     unsafe_code,
@@ -17,8 +17,8 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
 use chronicle_core::{
-    Book, BookConfig, DepthLevel, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId,
-    Side, StpPolicy,
+    Book, BookConfig, BookError, DepthLevel, EventBuffer, ExecutionEvent, OrderId, OrderType,
+    ParticipantId, Side, StpPolicy,
 };
 
 thread_local! {
@@ -51,11 +51,11 @@ fn allocations() -> u64 {
     ALLOCATIONS.with(Cell::get)
 }
 
-/// SplitMix64, the workspace's deterministic generator (section 11).
+/// `SplitMix64`, the workspace's deterministic generator (section 11).
 struct SplitMix64(u64);
 
 impl SplitMix64 {
-    fn next(&mut self) -> u64 {
+    const fn next(&mut self) -> u64 {
         self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
         let mut z = self.0;
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -64,7 +64,7 @@ impl SplitMix64 {
     }
 }
 
-fn config() -> BookConfig {
+const fn config() -> BookConfig {
     BookConfig {
         max_orders: 1024,
         grid_len: 640,
@@ -90,6 +90,135 @@ fn tally(storage: &[ExecutionEvent], written: usize, counters: &mut Counters) {
     }
 }
 
+/// Apply one finished book call and tally its events on success.
+fn apply_tallied(
+    storage: &[ExecutionEvent],
+    counters: &mut Counters,
+    out: Result<usize, BookError>,
+) -> Result<usize, BookError> {
+    if let Ok(written) = out {
+        tally(storage, written, counters);
+    }
+    out
+}
+
+/// One add operation from the mix: a resting or crossing add of the
+/// given order type, with side, price, quantity, and id derived
+/// from the draw. `side_shift` picks which draw bit chooses the
+/// side, so the two add arms decorrelate.
+fn add_op(
+    book: &mut Book,
+    storage: &mut Vec<ExecutionEvent>,
+    counters: &mut Counters,
+    r: u64,
+    participant: ParticipantId,
+    order_type: OrderType,
+    side_shift: u32,
+) -> Result<usize, BookError> {
+    let side = if (r >> side_shift).is_multiple_of(2) {
+        Side::Bid
+    } else {
+        Side::Ask
+    };
+    let price = 250 + (r >> 9) % 100;
+    let qty = 1 + (r >> 17) % 20;
+    let order_id = OrderId(2000 + (r >> 32) % 4000);
+    let mut events = EventBuffer::new(&mut *storage);
+    let out = book.add_order(
+        order_id,
+        participant,
+        side,
+        order_type,
+        price,
+        qty,
+        None,
+        &mut events,
+    );
+    apply_tallied(storage, counters, out)
+}
+
+/// One rejection-path operation from the mix, rotating by draw:
+/// zero quantity, off-grid price, unknown cancel, duplicate id.
+/// Each must fail with no side effects (INV-ORD-1 covers the
+/// no-side-effect half; here they prove the paths run
+/// allocation-free). Each arm scopes its own event buffer so the
+/// tallies between calls never fight a live borrow.
+fn rejection_op(
+    book: &mut Book,
+    storage: &mut Vec<ExecutionEvent>,
+    counters: &mut Counters,
+    r: u64,
+    participant: ParticipantId,
+) -> Result<usize, BookError> {
+    match (r >> 8) % 4 {
+        0 => {
+            let mut events = EventBuffer::new(&mut *storage);
+            book.add_order(
+                OrderId(900_001),
+                participant,
+                Side::Bid,
+                OrderType::Limit,
+                100,
+                0,
+                None,
+                &mut events,
+            )
+        }
+        1 => {
+            let mut events = EventBuffer::new(&mut *storage);
+            book.add_order(
+                OrderId(900_002),
+                participant,
+                Side::Bid,
+                OrderType::Limit,
+                0,
+                5,
+                None,
+                &mut events,
+            )
+        }
+        2 => {
+            let mut events = EventBuffer::new(&mut *storage);
+            book.cancel_order(OrderId(999_999), &mut events)
+        }
+        _ => {
+            // Duplicate id: plant a live order, then add it again.
+            // The plant and the cleanup sit inside the same
+            // rejection slot.
+            let plant = {
+                let mut events = EventBuffer::new(&mut *storage);
+                book.add_order(
+                    OrderId(900_003),
+                    participant,
+                    Side::Bid,
+                    OrderType::Limit,
+                    100,
+                    5,
+                    None,
+                    &mut events,
+                )
+            };
+            let _ = apply_tallied(storage, counters, plant);
+            let dup = {
+                let mut events = EventBuffer::new(&mut *storage);
+                book.add_order(
+                    OrderId(900_003),
+                    participant,
+                    Side::Bid,
+                    OrderType::Limit,
+                    100,
+                    5,
+                    None,
+                    &mut events,
+                )
+            };
+            let mut cleanup = EventBuffer::new(&mut *storage);
+            let _ = book.cancel_order(OrderId(900_003), &mut cleanup);
+            dup
+        }
+    }
+}
+
 /// Run `count` mixed operations against the book. The mix covers
 /// resting and crossing adds of every order type, cancels, amends,
 /// mass cancels, depth and best-price queries, and the rejection
@@ -110,29 +239,7 @@ fn run_mixed_ops(
         let participant = ParticipantId(u32::try_from((r >> 24) % 4).expect("mod 4 fits u32"));
         let result = if slot < 40 {
             // Resting and crossing limit adds near the touch.
-            let side = if (r >> 8) % 2 == 0 {
-                Side::Bid
-            } else {
-                Side::Ask
-            };
-            let price = 250 + (r >> 9) % 100;
-            let qty = 1 + (r >> 17) % 20;
-            let order_id = OrderId(2000 + (r >> 32) % 4000);
-            let mut events = EventBuffer::new(&mut *storage);
-            let out = book.add_order(
-                order_id,
-                participant,
-                side,
-                OrderType::Limit,
-                price,
-                qty,
-                None,
-                &mut events,
-            );
-            if let Ok(written) = out {
-                tally(storage, written, counters);
-            }
-            out
+            add_op(book, storage, counters, r, participant, OrderType::Limit, 8)
         } else if slot < 55 {
             // Immediate order types, rotating by draw.
             let order_type = match (r >> 8) % 3 {
@@ -140,54 +247,23 @@ fn run_mixed_ops(
                 1 => OrderType::Fok,
                 _ => OrderType::PostOnly,
             };
-            let side = if (r >> 11) % 2 == 0 {
-                Side::Bid
-            } else {
-                Side::Ask
-            };
-            let price = 250 + (r >> 9) % 100;
-            let qty = 1 + (r >> 17) % 20;
-            let order_id = OrderId(2000 + (r >> 32) % 4000);
-            let mut events = EventBuffer::new(&mut *storage);
-            let out = book.add_order(
-                order_id,
-                participant,
-                side,
-                order_type,
-                price,
-                qty,
-                None,
-                &mut events,
-            );
-            if let Ok(written) = out {
-                tally(storage, written, counters);
-            }
-            out
+            add_op(book, storage, counters, r, participant, order_type, 11)
         } else if slot < 75 {
             let order_id = OrderId(1 + (r >> 8) % 6000);
             let mut events = EventBuffer::new(&mut *storage);
             let out = book.cancel_order(order_id, &mut events);
-            if let Ok(written) = out {
-                tally(storage, written, counters);
-            }
-            out
+            apply_tallied(storage, counters, out)
         } else if slot < 85 {
             let order_id = OrderId(1 + (r >> 8) % 6000);
             let new_price = 250 + (r >> 9) % 100;
             let new_qty = 1 + (r >> 17) % 20;
             let mut events = EventBuffer::new(&mut *storage);
             let out = book.amend_order(order_id, new_price, new_qty, &mut events);
-            if let Ok(written) = out {
-                tally(storage, written, counters);
-            }
-            out
+            apply_tallied(storage, counters, out)
         } else if slot < 90 {
             let mut events = EventBuffer::new(&mut *storage);
             let out = book.cancel_by_participant(participant, &mut events);
-            if let Ok(written) = out {
-                tally(storage, written, counters);
-            }
-            out
+            apply_tallied(storage, counters, out)
         } else if slot < 95 {
             // Queries return values, not events; count them as
             // applied work with zero events written.
@@ -198,81 +274,7 @@ fn run_mixed_ops(
             counters.applied += 1;
             continue;
         } else {
-            // Rejection paths, rotating by draw. Each must fail with
-            // no side effects (INV-ORD-1 covers the no-side-effect
-            // half; here they prove the paths run allocation-free).
-            // Each arm scopes its own event buffer so the tallies
-            // between calls never fight a live borrow.
-            let out = match (r >> 8) % 4 {
-                0 => {
-                    let mut events = EventBuffer::new(&mut *storage);
-                    book.add_order(
-                        OrderId(900_001),
-                        participant,
-                        Side::Bid,
-                        OrderType::Limit,
-                        100,
-                        0,
-                        None,
-                        &mut events,
-                    )
-                }
-                1 => {
-                    let mut events = EventBuffer::new(&mut *storage);
-                    book.add_order(
-                        OrderId(900_002),
-                        participant,
-                        Side::Bid,
-                        OrderType::Limit,
-                        0,
-                        5,
-                        None,
-                        &mut events,
-                    )
-                }
-                2 => {
-                    let mut events = EventBuffer::new(&mut *storage);
-                    book.cancel_order(OrderId(999_999), &mut events)
-                }
-                _ => {
-                    // Duplicate id: plant a live order, then add it
-                    // again. The plant and the cleanup sit inside
-                    // the same rejection slot.
-                    let plant = {
-                        let mut events = EventBuffer::new(&mut *storage);
-                        book.add_order(
-                            OrderId(900_003),
-                            participant,
-                            Side::Bid,
-                            OrderType::Limit,
-                            100,
-                            5,
-                            None,
-                            &mut events,
-                        )
-                    };
-                    if let Ok(written) = plant {
-                        tally(storage, written, counters);
-                    }
-                    let dup = {
-                        let mut events = EventBuffer::new(&mut *storage);
-                        book.add_order(
-                            OrderId(900_003),
-                            participant,
-                            Side::Bid,
-                            OrderType::Limit,
-                            100,
-                            5,
-                            None,
-                            &mut events,
-                        )
-                    };
-                    let mut cleanup = EventBuffer::new(&mut *storage);
-                    let _ = book.cancel_order(OrderId(900_003), &mut cleanup);
-                    dup
-                }
-            };
-            out
+            rejection_op(book, storage, counters, r, participant)
         };
         match result {
             Ok(_) => counters.applied += 1,
@@ -286,8 +288,7 @@ fn run_mixed_ops(
 fn alloc_zero_steady_state_1m_ops() {
     let cfg = config();
     let mut book = Book::new(cfg).expect("book");
-    let mut storage: Vec<ExecutionEvent> = Vec::new();
-    storage.reserve(2 * cfg.max_orders as usize + 2);
+    let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(2 * cfg.max_orders as usize + 2);
     let mut depth_out: Vec<DepthLevel> = Vec::new();
     depth_out.resize_with(64, || DepthLevel {
         price: 0,
