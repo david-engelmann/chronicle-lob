@@ -589,6 +589,21 @@ pub fn load_snapshot(path: &Path, expected: &BookConfig) -> Result<SnapshotState
     decode_snapshot(&bytes, expected)
 }
 
+/// Read the book configuration a snapshot was written with, from
+/// its header alone. This is the bootstrap a caller needs before
+/// [`decode_snapshot`], which validates the file against an expected
+/// configuration: read the configuration here, then decode against
+/// it. Header validation (size arithmetic, magic, version, header
+/// length, sequence continuity) runs exactly as in a full decode;
+/// the body and the trailing checksum are not examined.
+///
+/// # Errors
+///
+/// Returns the header validation errors of [`decode_snapshot`].
+pub fn snapshot_config(bytes: &[u8]) -> Result<BookConfig, WalError> {
+    Ok(read_header(bytes)?.config)
+}
+
 #[cfg(test)]
 mod tests {
     use chronicle_core::{

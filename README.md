@@ -41,7 +41,7 @@ The core crate has no dependencies outside the Rust standard library.
 
 ## Current state
 
-The project is being built in four milestones, and is at milestone 4.
+The project was built in four milestones, and all four have landed.
 
 - Milestone 1 has landed. The core book, the price grid, limit order
   matching, cancels, and best-price and depth queries.
@@ -50,12 +50,11 @@ The project is being built in four milestones, and is at milestone 4.
 - Milestone 3 has landed. The write-ahead log and snapshots, so a
   book can be written to disk as it runs and rebuilt exactly after
   a crash.
-- Milestone 4 is in progress now. A command line tool for replaying
-  and benchmarking a book, plus the final performance proof work.
+- Milestone 4 has landed. A command line tool for replaying and
+  benchmarking a book, plus the final performance proof work.
 
-The core and write-ahead log crates exist today. The command line
-tool is not built yet, and nothing here is published to crates.io
-yet.
+All three crates exist today. Nothing here is published to
+crates.io yet.
 
 ## A short example
 
@@ -113,6 +112,30 @@ their events into a caller-owned buffer, so the caller decides how
 much output room each command gets and is told up front when a buffer
 is too small.
 
+## The command line tool
+
+The `chronicle-cli` binary works with the log and snapshot files
+the engine writes. It has four subcommands.
+
+- `replay` applies a write-ahead log to a book and prints every
+  event the commands produce, in order.
+- `verify` checks a log and snapshot pair and reports whether the
+  sequence numbers and checksums are healthy.
+- `snapshot` replays a log and writes a snapshot of the book it
+  rebuilds.
+- `bench` runs a seeded synthetic load against a fresh book and
+  prints a summary, as plain text or as JSON with `--json`.
+
+A book is rebuilt either from a snapshot, which carries its own
+configuration, or from configuration flags that name the arena
+size and the price grid. Every subcommand accepts `--seed` and
+honours the `SIM_SEED` environment variable.
+
+```sh
+chronicle-cli verify --wal book.wal --snapshot book.snapshot
+chronicle-cli bench --ops 100000 --seed 42 --json
+```
+
 ## Building and testing
 
 ```sh
@@ -126,14 +149,21 @@ event streams. Set `PROPTEST_CASES` to control how many cases they
 run. Continuous integration runs 1,000 cases per pull request and
 10,000 on the main branch.
 
+The suite also includes a proof that the engine performs no heap
+allocations across one million mixed operations, and criterion
+benchmarks for matching, depth queries, log appends, and recovery.
+
 ## Repository layout
 
-- `crates/chronicle-core` is the engine itself, the only crate so far.
+- `crates/chronicle-core` is the engine itself.
+- `crates/chronicle-wal` is the write-ahead log and snapshot code.
+- `crates/chronicle-cli` is the command line tool.
 - `docs/ARCHITECTURE.md` is the full design, written for engineers who
   want the data structures, the formats, and the reasoning.
 - `docs/INVARIANTS.md` lists every correctness rule the engine
   promises, and names the exact test that enforces each one.
 - `DECISIONS.md` records the locked project decisions.
+- `CONTRIBUTING.md` explains how the project is built and tested.
 
 ## License
 

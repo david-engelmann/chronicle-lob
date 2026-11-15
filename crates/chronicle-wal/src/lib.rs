@@ -31,6 +31,6 @@ pub use reader::{ScanOutcome, ScannedFrame, read_log, scan_log};
 pub use recover::{Recovery, RecoveryReport, recover, recover_from_files};
 pub use snapshot::{
     SaveStep, decode_snapshot, encode_snapshot, encoded_len, load_snapshot, save_snapshot,
-    save_snapshot_with_hook,
+    save_snapshot_with_hook, snapshot_config,
 };
 pub use writer::{SyncPolicy, WalSink, WalWriter};
