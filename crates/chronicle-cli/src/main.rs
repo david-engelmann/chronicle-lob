@@ -306,7 +306,7 @@ fn replay(sub: &ArgMatches) -> Result<(), String> {
     let (mut book, base_seq) = match &inputs.snapshot_path {
         Some(path) => {
             let state = load_snapshot(path, &inputs.config).map_err(|e| e.to_string())?;
-            let base_seq = state.last_included_seq;
+            let base_seq = state.next_seq - 1;
             let book = Book::from_snapshot_state(state).map_err(|e| e.to_string())?;
             (book, base_seq)
         }
@@ -363,10 +363,10 @@ fn verify(sub: &ArgMatches) -> ExitCode {
         };
         match load_snapshot(path, &config) {
             Ok(state) => {
-                base_seq = state.last_included_seq;
+                base_seq = state.next_seq - 1;
                 println!(
                     "snapshot: ok last_included_seq={} live_orders={}",
-                    state.last_included_seq,
+                    state.next_seq - 1,
                     state.live_orders.len()
                 );
             }
@@ -415,7 +415,7 @@ fn snapshot_command(sub: &ArgMatches) -> Result<(), String> {
     save_snapshot(&out_path, &state).map_err(|e| e.to_string())?;
     println!(
         "snapshot: written last_included_seq={} live_orders={}",
-        state.last_included_seq,
+        state.next_seq - 1,
         state.live_orders.len()
     );
     Ok(())
