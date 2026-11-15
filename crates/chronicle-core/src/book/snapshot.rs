@@ -391,4 +391,34 @@ mod tests {
             "post-restore behaviour, slots included, matches the original"
         );
     }
+
+    #[test]
+    fn book_construction_allocates_levels_and_lookup_once() {
+        // INV-ALLOC-2 at book level: construction allocates each
+        // arena column, level array, and lookup column exactly
+        // once, at the configured capacity. The arena-level half is
+        // the arena unit test of the same invariant, and the
+        // 1,000,000-operation counter proof (INV-ALLOC-1) covers
+        // the no-growth half at full capacity.
+        let cfg = test_config();
+        let book = Book::new(cfg).expect("valid config builds");
+        let max_orders = cfg.max_orders as usize;
+        let grid_len = cfg.grid_len as usize;
+        assert_eq!(book.arena.generation.capacity(), max_orders);
+        assert_eq!(book.arena.state.capacity(), max_orders);
+        assert_eq!(book.arena.order_id.capacity(), max_orders);
+        assert_eq!(book.arena.participant.capacity(), max_orders);
+        assert_eq!(book.arena.price_idx.capacity(), max_orders);
+        assert_eq!(book.arena.qty.capacity(), max_orders);
+        assert_eq!(book.arena.side.capacity(), max_orders);
+        assert_eq!(book.arena.prev.capacity(), max_orders);
+        assert_eq!(book.arena.next.capacity(), max_orders);
+        assert_eq!(book.levels.head.capacity(), grid_len);
+        assert_eq!(book.levels.tail.capacity(), grid_len);
+        assert_eq!(book.levels.qty.capacity(), grid_len);
+        assert_eq!(book.levels.count.capacity(), grid_len);
+        // The lookup table is the smallest power of two holding
+        // twice the order capacity (the 50 percent load cap).
+        assert_eq!(book.lookup.capacity(), (2 * max_orders).next_power_of_two());
+    }
 }

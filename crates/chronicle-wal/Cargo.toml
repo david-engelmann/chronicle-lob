@@ -9,6 +9,15 @@ chronicle-core = { path = "../chronicle-core" }
 
 [dev-dependencies]
 proptest = "1"
+criterion = "0.5"
+
+[[bench]]
+name = "bench_wal_append"
+harness = false
+
+[[bench]]
+name = "bench_recovery"
+harness = false
 
 [lints]
 workspace = true

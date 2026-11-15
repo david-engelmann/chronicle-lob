@@ -1,0 +1,21 @@
+[package]
+name = "chronicle-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.100"
+description = "Command line replay, verification, snapshot, and benchmark tool for chronicle books"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/david-engelmann/chronicle-lob"
+
+[[bin]]
+name = "chronicle-cli"
+path = "src/main.rs"
+
+[dependencies]
+chronicle-core = { path = "../chronicle-core" }
+chronicle-wal = { path = "../chronicle-wal" }
+clap = { version = "4", features = ["env"] }
+serde_json = "1"
+
+[lints]
+workspace = true
