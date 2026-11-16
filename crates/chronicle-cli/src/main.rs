@@ -302,6 +302,10 @@ fn inputs(sub: &ArgMatches) -> Result<Inputs, String> {
 }
 
 fn replay(sub: &ArgMatches) -> Result<(), String> {
+    // INV-DET-2: the seed banner prints at startup, before any
+    // event line, exactly as the bench text output opens.
+    let seed = *sub.get_one::<u64>("seed").expect("seed has a default");
+    println!("seed={seed}");
     let inputs = inputs(sub)?;
     let (mut book, base_seq) = match &inputs.snapshot_path {
         Some(path) => {
