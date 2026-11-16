@@ -139,9 +139,10 @@ command unless a row says otherwise.
 
 Latency claims are benchmark obligations, not prose. Each benchmark runs
 in CI in compile-check mode (cargo bench --workspace -- --test) on every
-PR from M4, and full runs produce the numbers quoted in README.md
-section 3. A benchmark that stops compiling or loses its throughput
-configuration fails CI.
+PR from M4. Full runs happen locally; README.md quotes no latency
+numbers, and any number published in release notes must satisfy
+CHECK-DOC-1 below. A benchmark that stops compiling or loses its
+throughput configuration fails CI.
 
 | ID | Invariant | Enforcement | Enforced at |
 | --- | --- | --- | --- |

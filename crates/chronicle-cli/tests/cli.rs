@@ -200,7 +200,13 @@ fn joined(lines: &[String]) -> String {
 #[test]
 fn replay_prints_the_live_event_stream() {
     let session = build_session("replay-full");
-    let mut args = vec!["replay", "--wal", session.wal.to_str().unwrap()];
+    let mut args = vec![
+        "replay",
+        "--wal",
+        session.wal.to_str().unwrap(),
+        "--seed",
+        "42",
+    ];
     args.extend(CONFIG_FLAGS);
     let output = run_cli(&args);
     assert!(
@@ -208,7 +214,9 @@ fn replay_prints_the_live_event_stream() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(stdout_of(&output), joined(&session.lines));
+    let mut expected = String::from("seed=42\n");
+    expected.push_str(&joined(&session.lines));
+    assert_eq!(stdout_of(&output), expected);
     assert_eq!(session.lines[0], "1 accepted order=1");
     assert!(
         session
@@ -229,6 +237,8 @@ fn replay_from_snapshot_prints_only_later_events() {
         session.wal.to_str().unwrap(),
         "--snapshot",
         session.snapshot.to_str().unwrap(),
+        "--seed",
+        "42",
     ]);
     assert!(
         output.status.success(),
@@ -248,7 +258,76 @@ fn replay_from_snapshot_prints_only_later_events() {
         2,
         "only the amend and the cancel follow the snapshot"
     );
-    assert_eq!(stdout_of(&output), joined(&later));
+    let mut expected = String::from("seed=42\n");
+    expected.push_str(&joined(&later));
+    assert_eq!(stdout_of(&output), expected);
+    let _ = fs::remove_dir_all(&session.dir);
+}
+
+#[test]
+fn det_cli_replay_twice_byte_identical() {
+    // INV-DET-1: the same command sequence at the same seed
+    // produces byte-identical replay output across separate OS
+    // processes. Each run_cli call spawns its own process, and the
+    // full stdout bytes are compared, banner included.
+    let session = build_session("det-twice");
+    let mut args = vec![
+        "replay",
+        "--wal",
+        session.wal.to_str().unwrap(),
+        "--seed",
+        "42",
+    ];
+    args.extend(CONFIG_FLAGS);
+    let first = run_cli(&args);
+    let second = run_cli(&args);
+    assert!(
+        first.status.success() && second.status.success(),
+        "stderr: {} / {}",
+        String::from_utf8_lossy(&first.stderr),
+        String::from_utf8_lossy(&second.stderr)
+    );
+    let mut expected = String::from("seed=42\n");
+    expected.push_str(&joined(&session.lines));
+    assert_eq!(stdout_of(&first), expected);
+    assert_eq!(
+        first.stdout, second.stdout,
+        "replay output must be byte-identical across processes"
+    );
+    let _ = fs::remove_dir_all(&session.dir);
+}
+
+#[test]
+fn seed_banner_printed() {
+    // INV-DET-2: the CLI bench and replay commands emit the seed
+    // line at startup, from the flag or from SIM_SEED.
+    let session = build_session("seed-banner");
+    let mut args = vec![
+        "replay",
+        "--wal",
+        session.wal.to_str().unwrap(),
+        "--seed",
+        "42",
+    ];
+    args.extend(CONFIG_FLAGS);
+    let replay = run_cli(&args);
+    assert!(replay.status.success());
+    assert!(
+        stdout_of(&replay).starts_with("seed=42\n"),
+        "replay stdout was: {}",
+        stdout_of(&replay)
+    );
+    let bench = run_cli(&["bench", "--ops", "10", "--seed", "42"]);
+    assert!(stdout_of(&bench).starts_with("seed=42\n"));
+    let mut env_args = vec!["replay", "--wal", session.wal.to_str().unwrap()];
+    env_args.extend(CONFIG_FLAGS);
+    let from_env = run_cli_env(&env_args, &[("SIM_SEED", "7")]);
+    assert!(from_env.status.success());
+    assert!(
+        stdout_of(&from_env).starts_with("seed=7\n"),
+        "replay stdout was: {}",
+        stdout_of(&from_env)
+    );
     let _ = fs::remove_dir_all(&session.dir);
 }
 
