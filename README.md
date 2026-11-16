@@ -136,6 +136,41 @@ chronicle-cli verify --wal book.wal --snapshot book.snapshot
 chronicle-cli bench --ops 100000 --seed 42 --json
 ```
 
+### A worked example
+
+The chronicle-wal example writes a five-command session to
+`session.wal` and takes a snapshot halfway through it.
+
+```sh
+cargo run -p chronicle-wal --example wal_recovery
+```
+
+The pair it writes is exactly the session the command line tests
+drive, so the tool's answers below are pinned by the test suite.
+
+```sh
+chronicle-cli verify --wal session.wal --snapshot session.snapshot
+```
+
+```
+snapshot: ok last_included_seq=3 live_orders=2
+wal: ok frames=5 discarded=0 last_seq=5
+verdict: ok
+```
+
+Replay starts from the snapshot, so it prints the seed banner and
+only the two events the snapshot does not already cover.
+
+```sh
+chronicle-cli replay --wal session.wal --snapshot session.snapshot
+```
+
+```
+seed=0
+4 amended order=1 price=99 qty=6
+5 cancelled order=2 reason=requested
+```
+
 ## Building and testing
 
 ```sh
@@ -162,6 +197,8 @@ benchmarks for matching, depth queries, log appends, and recovery.
   want the data structures, the formats, and the reasoning.
 - `docs/INVARIANTS.md` lists every correctness rule the engine
   promises, and names the exact test that enforces each one.
+- `docs/ROADMAP.md` is the post-M4 plan, six scoped lanes with
+  their gates, publication readiness first.
 - `DECISIONS.md` records the locked project decisions.
 - `CONTRIBUTING.md` explains how the project is built and tested.
 

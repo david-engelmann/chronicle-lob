@@ -1,0 +1,6 @@
+wrote: session.wal session.snapshot
+snapshot: last_included_seq=3 live_orders=2
+recovery: frames_skipped=3 frames_applied=2 discarded=0 last_recovered_seq=5
+recovered: live_orders=1 best_bid=99 best_ask=none
+live: live_orders=1 best_bid=99 best_ask=none
+match: yes
