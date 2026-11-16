@@ -226,3 +226,32 @@ jobs:
               sys.exit(1)
           print("chronicle-core: no forbidden determinism tokens. OK.")
           PY
+
+  package:
+    name: crates package cleanly (publication readiness, R1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check workspace presence
+        id: ws
+        run: |
+          if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
+      # Roadmap lane R1 (docs/ROADMAP.md): chronicle-core has no
+      # workspace dependencies, so its package verification build
+      # runs in full today. The dependent crates resolve their
+      # workspace dependencies from the registry when packaged, so
+      # until chronicle-core is published they are audited by file
+      # list. The publish sequence in the roadmap extends this job
+      # to full verification builds for them once core is live.
+      - name: cargo package chronicle-core (verification build)
+        if: steps.ws.outputs.present == 'true'
+        run: cargo package -p chronicle-core --locked
+      - name: cargo package --list for the dependent crates
+        if: steps.ws.outputs.present == 'true'
+        run: |
+          cargo package --list -p chronicle-wal --locked
+          cargo package --list -p chronicle-lob-cli --locked
