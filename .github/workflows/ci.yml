@@ -111,6 +111,32 @@ jobs:
           echo "SIM_SEED=$SIM_SEED PROPTEST_CASES=$PROPTEST_CASES"
           cargo test --workspace --locked
 
+  seed-sweep-second:
+    name: seed sweep, second seed (main volume, 10,000 cases)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      PROPTEST_CASES: "10000"
+      SIM_SEED: "10001"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check workspace presence
+        id: ws
+        run: |
+          if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
+      # Roadmap lane R4 (docs/ROADMAP.md): main volume runs at two
+      # seeds, so an ambient-seed leak in a seeded test cannot hide
+      # behind the one seed the first sweep uses.
+      - name: cargo test --workspace --locked (second seed sweep)
+        if: steps.ws.outputs.present == 'true'
+        run: |
+          echo "SIM_SEED=$SIM_SEED PROPTEST_CASES=$PROPTEST_CASES"
+          cargo test --workspace --locked
+
   doc:
     name: rustdoc (-D warnings)
     runs-on: ubuntu-latest

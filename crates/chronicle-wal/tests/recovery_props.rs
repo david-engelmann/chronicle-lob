@@ -3,7 +3,11 @@
 //! accepted command is written to a log; recovery from the log, with
 //! and without a midpoint snapshot, must reproduce the live book's
 //! structural state exactly, and the two recovery paths must then
-//! behave identically command by command.
+//! behave identically command by command. Roadmap lane R4 adds the
+//! byte-level pair: a captured state must survive snapshot encode
+//! and decode unchanged (INV-SNAP-1), and recovery must still equal
+//! the live book when the snapshot reaches it as encoded bytes
+//! rather than as a live value (INV-SNAP-3).
 
 use std::io;
 
@@ -11,7 +15,9 @@ use chronicle_core::{
     Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId, Side,
     SnapshotState, StpPolicy,
 };
-use chronicle_wal::{SyncPolicy, WalCommand, WalSink, WalWriter, recover};
+use chronicle_wal::{
+    SyncPolicy, WalCommand, WalSink, WalWriter, decode_snapshot, encode_snapshot, recover,
+};
 use proptest::prelude::*;
 
 const fn config() -> BookConfig {
@@ -210,5 +216,40 @@ proptest! {
             full.capture_snapshot_state(),
             snapped.capture_snapshot_state()
         );
+    }
+
+    #[test]
+    fn prop_snapshot_bytes_round_trip(
+        commands in prop::collection::vec(arb_command(), 0..48),
+        split_seed in 0usize..1000,
+    ) {
+        // INV-SNAP-1 at the byte level (R4): a state captured from a
+        // generated session survives encode and decode unchanged,
+        // not only the golden book the layout test pins.
+        let split = split_seed % (commands.len() + 1);
+        let live = run_live(&commands, split);
+        let mut bytes = Vec::new();
+        encode_snapshot(&live.mid_state, &mut bytes);
+        let decoded = decode_snapshot(&bytes, &config()).expect("decode");
+        prop_assert_eq!(decoded, live.mid_state);
+    }
+
+    #[test]
+    fn prop_recovery_from_snapshot_bytes_equals_live(
+        commands in prop::collection::vec(arb_command(), 1..48),
+        split_seed in 0usize..1000,
+    ) {
+        // INV-SNAP-3 through the byte path (R4): the snapshot
+        // reaches recovery as encoded bytes, decoded first, and the
+        // recovered book still equals the live book exactly, with
+        // the same frames skipped.
+        let split = split_seed % (commands.len() + 1);
+        let live = run_live(&commands, split);
+        let mut bytes = Vec::new();
+        encode_snapshot(&live.mid_state, &mut bytes);
+        let decoded = decode_snapshot(&bytes, &config()).expect("decode");
+        let recovery = recover(config(), Some(decoded), &live.wal).expect("recover");
+        prop_assert_eq!(recovery.report.frames_skipped, live.mid_accepted);
+        prop_assert_eq!(recovery.book.capture_snapshot_state(), live.final_state);
     }
 }
