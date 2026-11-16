@@ -1,0 +1,28 @@
+1 accepted order=1
+2 accepted order=2
+3 trade maker=1 taker=3 price=100 qty=4
+3 filled order=3
+4 amended order=1 price=99 qty=6
+5 cancelled order=2 reason=requested
+6 accepted order=4
+7 trade maker=4 taker=5 price=105 qty=20
+7 filled order=4
+7 expired order=5 remaining=5
+8 accepted order=6
+rejected order=7: post-only order at price 105 would cross the opposite best price 106
+9 trade maker=6 taker=8 price=106 qty=5
+9 filled order=6
+9 filled order=8
+rejected order=9: fill-or-kill order requested 50 but only 0 is executable
+10 accepted order=10
+11 cancelled order=10 reason=self-trade-prevention
+11 accepted order=11
+12 trade maker=11 taker=12 price=100 qty=4
+12 filled order=11
+12 accepted order=12
+13 self-trade-prevented order=13
+14 cancelled order=12 reason=self-trade-prevention
+14 self-trade-prevented order=14
+summary: live_orders=1
+summary: best_bid=99 qty=6
+summary: best_ask=none

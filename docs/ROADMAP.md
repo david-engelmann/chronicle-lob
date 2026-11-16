@@ -45,6 +45,14 @@ and the crates.io index on 2026-11-16.
   property and no seed discipline beyond the two CI volumes. Proptest
   regression files are not checked in because none have been produced
   and no lane is charged with producing them.
+- A-9. Found by lane R2 on 2026-11-16. save_snapshot fails with an
+  Io error when the snapshot path is a bare file name with no
+  parent directory, because the atomic write stages its temp file
+  in the parent and syncs it. The same call with an explicit
+  parent (./name) succeeds. Whether the library should normalise
+  an empty parent itself or the requirement should be documented
+  on save_snapshot is a decision for lane R6, whose robustness
+  scope covers the wal entry points.
 
 ## Lane R1, publication readiness (starts first)
 

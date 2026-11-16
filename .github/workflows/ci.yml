@@ -255,3 +255,27 @@ jobs:
         run: |
           cargo package --list -p chronicle-wal --locked
           cargo package --list -p chronicle-lob-cli --locked
+
+  examples:
+    name: examples run with pinned output (R2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check workspace presence
+        id: ws
+        run: |
+          if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
+      # Roadmap lane R2 (docs/ROADMAP.md): each example's full
+      # stdout is pinned by an expected file checked in beside it,
+      # so the examples are executable documentation with a gate.
+      - name: Run the examples and diff against their pinned output
+        if: steps.ws.outputs.present == 'true'
+        run: |
+          cargo run --locked -p chronicle-core --example book_session > /tmp/book_session.out
+          diff -u crates/chronicle-core/examples/book_session.expected.txt /tmp/book_session.out
+          cargo run --locked -p chronicle-wal --example wal_recovery > /tmp/wal_recovery.out
+          diff -u crates/chronicle-wal/examples/wal_recovery.expected.txt /tmp/wal_recovery.out
