@@ -5,7 +5,7 @@
 //! and session.snapshot into the current directory, which is the
 //! pair the README's worked example inspects with chronicle-cli.
 //! CI runs this example and diffs its output against
-//! wal_recovery.expected.txt.
+//! `wal_recovery.expected.txt`.
 
 use std::fs;
 use std::path::PathBuf;
@@ -53,7 +53,10 @@ fn describe(label: &str, book: &Book) {
 
 fn main() {
     let wal_path = PathBuf::from("session.wal");
-    let snapshot_path = PathBuf::from("session.snapshot");
+    // The snapshot path carries an explicit parent directory
+    // because save_snapshot stages its temp file in the parent
+    // and syncs it (docs/ROADMAP.md, finding A-9).
+    let snapshot_path = PathBuf::from("./session.snapshot");
     let mut book = Book::new(config()).expect("the example configuration is valid");
     let file = fs::File::create(&wal_path).expect("create session.wal");
     let mut writer = WalWriter::new(file, SyncPolicy::Never);

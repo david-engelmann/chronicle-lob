@@ -1,8 +1,8 @@
 //! A worked session against chronicle-core: every order type, an
 //! amend, a cancel, both rejection shapes, and all three self-trade
 //! prevention policies. CI runs this example and diffs its output
-//! against book_session.expected.txt, so the printed stream is a
-//! pinned contract, not an illustration.
+//! against `book_session.expected.txt`, so the printed stream is
+//! a pinned contract, not an illustration.
 
 use chronicle_core::{
     Book, BookConfig, BookError, CancelReason, EventBuffer, ExecutionEvent, OrderId, OrderType,
