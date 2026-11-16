@@ -54,7 +54,7 @@ impl WalSink for VecSink {
     }
 }
 
-/// SplitMix64, the same generator family the core drivers use,
+/// `SplitMix64`, the same generator family the core drivers use,
 /// small enough to carry in the harness itself.
 struct SplitMix64 {
     state: u64,
@@ -65,7 +65,7 @@ impl SplitMix64 {
         Self { state: seed }
     }
 
-    fn next_u64(&mut self) -> u64 {
+    const fn next_u64(&mut self) -> u64 {
         self.state = self.state.wrapping_add(0x9E37_79B9_7F4A_7C15);
         let mut z = self.state;
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -186,10 +186,17 @@ fn run_surface(
         match outcome {
             Ok(true) => valid += 1,
             Ok(false) => errors += 1,
-            Err(_) => panic!(
-                "decoder panicked: surface={surface} iteration={i} kind={kind} \
-                 offset={offset} seed={SEED}"
-            ),
+            Err(payload) => {
+                let detail = payload
+                    .downcast_ref::<&str>()
+                    .map(|s| (*s).to_string())
+                    .or_else(|| payload.downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "unknown panic".to_string());
+                panic!(
+                    "decoder panicked: surface={surface} iteration={i} kind={kind} \
+                     offset={offset} seed={SEED}: {detail}"
+                );
+            }
         }
     }
     (valid, errors)
