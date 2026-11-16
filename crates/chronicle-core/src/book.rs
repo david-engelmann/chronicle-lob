@@ -58,6 +58,23 @@ pub struct Book {
 impl Book {
     /// Build an empty book.
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronicle_core::{Book, BookConfig, StpPolicy};
+    ///
+    /// let book = Book::new(BookConfig {
+    ///     max_orders: 16,
+    ///     grid_len: 640,
+    ///     tick_size: 1,
+    ///     grid_start_tick: 1,
+    ///     default_stp: StpPolicy::CancelIncoming,
+    /// })
+    /// .unwrap();
+    /// assert_eq!(book.live_order_count(), 0);
+    /// assert_eq!(book.best_bid(), None);
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns [`BookError::InvalidConfig`] when the configuration
@@ -121,6 +138,41 @@ impl Book {
     /// because preflight proved it does not cross.
     ///
     /// Returns the number of events written into `events`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronicle_core::{
+    ///     Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId,
+    ///     Side, StpPolicy,
+    /// };
+    ///
+    /// let mut book = Book::new(BookConfig {
+    ///     max_orders: 16,
+    ///     grid_len: 640,
+    ///     tick_size: 1,
+    ///     grid_start_tick: 1,
+    ///     default_stp: StpPolicy::CancelIncoming,
+    /// })
+    /// .unwrap();
+    /// let mut storage = Vec::with_capacity(8);
+    /// let mut events = EventBuffer::new(&mut storage);
+    /// let written = book
+    ///     .add_order(
+    ///         OrderId(1),
+    ///         ParticipantId(1),
+    ///         Side::Bid,
+    ///         OrderType::Limit,
+    ///         100,
+    ///         10,
+    ///         None,
+    ///         &mut events,
+    ///     )
+    ///     .unwrap();
+    /// assert_eq!(written, 1);
+    /// assert!(matches!(storage[0], ExecutionEvent::Accepted { .. }));
+    /// assert_eq!(book.best_bid(), Some((100, 10)));
+    /// ```
     ///
     /// # Errors
     ///
