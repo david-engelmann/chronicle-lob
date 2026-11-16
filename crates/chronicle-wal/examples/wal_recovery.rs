@@ -1,11 +1,11 @@
-// A worked durability session for chronicle-wal: five commands
-// are written to a log as they are applied to a live book, a
-// snapshot is taken halfway, and recovery from the pair must
-// rebuild the live book exactly. The example writes session.wal
-// and session.snapshot into the current directory, which is the
-// pair the README's worked example inspects with chronicle-cli.
-// CI runs this example and diffs its output against
-// wal_recovery.expected.txt.
+//! A worked durability session for chronicle-wal: five commands
+//! are written to a log as they are applied to a live book, a
+//! snapshot is taken halfway, and recovery from the pair must
+//! rebuild the live book exactly. The example writes session.wal
+//! and session.snapshot into the current directory, which is the
+//! pair the README's worked example inspects with chronicle-cli.
+//! CI runs this example and diffs its output against
+//! wal_recovery.expected.txt.
 
 use std::fs;
 use std::path::PathBuf;

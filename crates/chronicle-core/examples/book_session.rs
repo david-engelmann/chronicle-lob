@@ -1,8 +1,8 @@
-// A worked session against chronicle-core: every order type, an
-// amend, a cancel, both rejection shapes, and all three self-trade
-// prevention policies. CI runs this example and diffs its output
-// against book_session.expected.txt, so the printed stream is a
-// pinned contract, not an illustration.
+//! A worked session against chronicle-core: every order type, an
+//! amend, a cancel, both rejection shapes, and all three self-trade
+//! prevention policies. CI runs this example and diffs its output
+//! against book_session.expected.txt, so the printed stream is a
+//! pinned contract, not an illustration.
 
 use chronicle_core::{
     Book, BookConfig, BookError, CancelReason, EventBuffer, ExecutionEvent, OrderId, OrderType,
@@ -90,6 +90,7 @@ fn report(result: Result<usize, BookError>, storage: &[ExecutionEvent], order_id
 
 /// One add-order command for the session, with the self-trade
 /// policy left at the book default unless a step sets it.
+#[derive(Clone, Copy)]
 struct Add {
     id: u64,
     participant: u32,
