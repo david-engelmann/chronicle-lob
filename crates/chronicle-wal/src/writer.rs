@@ -80,6 +80,50 @@ impl<S: WalSink> WalWriter<S> {
     /// Encode and append one frame at sequence `seq`, then sync when
     /// the policy is [`SyncPolicy::Always`].
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::io;
+    ///
+    /// use chronicle_core::{OrderId, OrderType, ParticipantId, Side};
+    /// use chronicle_wal::{SyncPolicy, WalCommand, WalSink, WalWriter};
+    ///
+    /// #[derive(Default)]
+    /// struct VecSink {
+    ///     bytes: Vec<u8>,
+    /// }
+    ///
+    /// impl io::Write for VecSink {
+    ///     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+    ///         self.bytes.extend_from_slice(data);
+    ///         Ok(data.len())
+    ///     }
+    ///
+    ///     fn flush(&mut self) -> io::Result<()> {
+    ///         Ok(())
+    ///     }
+    /// }
+    ///
+    /// impl WalSink for VecSink {
+    ///     fn sync_data(&mut self) -> io::Result<()> {
+    ///         Ok(())
+    ///     }
+    /// }
+    ///
+    /// let mut writer = WalWriter::new(VecSink::default(), SyncPolicy::Never);
+    /// let add = WalCommand::Add {
+    ///     order_id: OrderId(1),
+    ///     participant: ParticipantId(1),
+    ///     side: Side::Bid,
+    ///     order_type: OrderType::Limit,
+    ///     stp: None,
+    ///     price: 100,
+    ///     qty: 10,
+    /// };
+    /// writer.append(&add, 1).unwrap();
+    /// assert!(!writer.into_inner().bytes.is_empty());
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns [`WalError::Io`] when the write or the sync fails.

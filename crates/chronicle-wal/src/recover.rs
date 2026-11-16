@@ -45,6 +45,69 @@ pub struct Recovery {
 /// Recover from an in-memory snapshot state (already decoded and
 /// validated) and a log held in memory.
 ///
+/// # Examples
+///
+/// ```
+/// use std::io;
+///
+/// use chronicle_core::{
+///     Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId, Side,
+///     StpPolicy,
+/// };
+/// use chronicle_wal::{SyncPolicy, WalCommand, WalSink, WalWriter, recover};
+///
+/// #[derive(Default)]
+/// struct VecSink {
+///     bytes: Vec<u8>,
+/// }
+///
+/// impl io::Write for VecSink {
+///     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+///         self.bytes.extend_from_slice(data);
+///         Ok(data.len())
+///     }
+///
+///     fn flush(&mut self) -> io::Result<()> {
+///         Ok(())
+///     }
+/// }
+///
+/// impl WalSink for VecSink {
+///     fn sync_data(&mut self) -> io::Result<()> {
+///         Ok(())
+///     }
+/// }
+///
+/// let config = BookConfig {
+///     max_orders: 16,
+///     grid_len: 640,
+///     tick_size: 1,
+///     grid_start_tick: 1,
+///     default_stp: StpPolicy::CancelIncoming,
+/// };
+/// let mut book = Book::new(config).unwrap();
+/// let mut writer = WalWriter::new(VecSink::default(), SyncPolicy::Never);
+/// let add = WalCommand::Add {
+///     order_id: OrderId(1),
+///     participant: ParticipantId(1),
+///     side: Side::Bid,
+///     order_type: OrderType::Limit,
+///     stp: None,
+///     price: 100,
+///     qty: 10,
+/// };
+/// let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(8);
+/// {
+///     let mut events = EventBuffer::new(&mut storage);
+///     add.apply(&mut book, &mut events).unwrap();
+/// }
+/// writer.append(&add, 1).unwrap();
+/// let bytes = writer.into_inner().bytes;
+/// let recovery = recover(config, None, &bytes).unwrap();
+/// assert_eq!(recovery.book.live_order_count(), 1);
+/// assert_eq!(recovery.report.frames_applied, 1);
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`WalError::SnapshotConfigMismatch`] when the snapshot's

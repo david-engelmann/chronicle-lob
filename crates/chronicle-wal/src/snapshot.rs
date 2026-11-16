@@ -518,6 +518,28 @@ fn tmp_path(path: &Path) -> PathBuf {
 /// write the `.tmp` sibling, sync it, rename it over the target,
 /// then sync the parent directory.
 ///
+/// # Examples
+///
+/// ```
+/// use chronicle_core::{Book, BookConfig, StpPolicy};
+/// use chronicle_wal::{load_snapshot, save_snapshot};
+///
+/// let config = BookConfig {
+///     max_orders: 16,
+///     grid_len: 640,
+///     tick_size: 1,
+///     grid_start_tick: 1,
+///     default_stp: StpPolicy::CancelIncoming,
+/// };
+/// let book = Book::new(config).unwrap();
+/// let state = book.capture_snapshot_state();
+/// let path = std::env::temp_dir().join("chronicle-wal-save-snapshot-doctest.bin");
+/// save_snapshot(&path, &state).unwrap();
+/// let loaded = load_snapshot(&path, &config).unwrap();
+/// assert_eq!(loaded, state);
+/// std::fs::remove_file(&path).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`WalError::Io`] when any step fails.

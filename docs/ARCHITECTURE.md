@@ -864,6 +864,26 @@ requires strict +1 steps thereafter. After recovery,
 next_seq = max_recovered_seq + 1, where max_recovered_seq is
 last_included_seq when the WAL adds nothing.
 
+### 10.5 Format stability and versioning
+
+Both byte formats carry a u16 version field, currently 1 in each
+(frame.rs for the WAL, snapshot.rs for snapshots). The rules are
+the same for both formats and are binding on any future change:
+
+- A reader accepts only the version it was built for. Any other
+  version is a typed error, never a partial or guessed read: the
+  WAL scan reports CorruptWalRecord (section 9.5), and the snapshot
+  loader reports CorruptSnapshot with BadVersion.
+- Any change to a field layout, a field width, or a field's
+  meaning requires a version bump. There is no silent evolution
+  inside a version.
+- The CRC domains are versioned strings ("chronicle-wal/v1" and
+  "chronicle-snapshot/v1"), so bytes written under one version can
+  never validate under another version's checksum.
+- A future reader that supports several versions still rejects
+  the ones it does not know. Compatibility is always explicit,
+  never assumed from a familiar magic.
+
 ## 11. Determinism rules
 
 Binding on chronicle-core and on the recovery path of chronicle-wal:
