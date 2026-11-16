@@ -1,0 +1,33 @@
+name: benchmarks
+
+# Roadmap lane R5 (docs/ROADMAP.md): performance baselines come
+# from this manually dispatched workflow, never from the regular
+# CI jobs, whose benches are compile-checked only. The first run's
+# numbers are recorded in docs/PERFORMANCE.md with this run's id,
+# the runner class, and each benchmark's configuration.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    name: criterion benchmarks (full measurement)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: cargo bench --workspace --locked
+        run: cargo bench --workspace --locked
+      - name: Upload criterion reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-${{ github.sha }}
+          path: target/criterion
+          if-no-files-found: error
