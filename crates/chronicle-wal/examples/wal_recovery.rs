@@ -53,10 +53,10 @@ fn describe(label: &str, book: &Book) {
 
 fn main() {
     let wal_path = PathBuf::from("session.wal");
-    // The snapshot path carries an explicit parent directory
-    // because save_snapshot stages its temp file in the parent
-    // and syncs it (docs/ROADMAP.md, finding A-9).
-    let snapshot_path = PathBuf::from("./session.snapshot");
+    // Bare file names are fine: save_snapshot treats an empty
+    // parent as the current directory (finding A-9, decided in
+    // lane R6).
+    let snapshot_path = PathBuf::from("session.snapshot");
     let mut book = Book::new(config()).expect("the example configuration is valid");
     let file = fs::File::create(&wal_path).expect("create session.wal");
     let mut writer = WalWriter::new(file, SyncPolicy::Never);

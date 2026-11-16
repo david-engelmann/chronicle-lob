@@ -52,7 +52,12 @@ and the crates.io index on 2026-11-16.
   parent (./name) succeeds. Whether the library should normalise
   an empty parent itself or the requirement should be documented
   on save_snapshot is a decision for lane R6, whose robustness
-  scope covers the wal entry points.
+  scope covers the wal entry points. Decided in lane R6 on
+  2026-11-16: the library normalises an empty parent to the
+  current directory inside save_snapshot, so a bare file name
+  saves and loads like any other path; the unit test
+  snapshot_save_and_load_accept_bare_file_name pins it, and the
+  wal example drops its ./ workaround.
 
 ## Lane R1, publication readiness (starts first)
 
