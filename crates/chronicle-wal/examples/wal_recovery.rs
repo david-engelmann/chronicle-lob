@@ -100,7 +100,7 @@ fn main() {
     let bytes = fs::read(&wal_path).expect("read session.wal");
     let loaded = load_snapshot(&snapshot_path, &config()).expect("the snapshot loads");
     assert_eq!(loaded, state, "the saved snapshot round-trips");
-    let recovery = recover(config(), Some(&loaded), &bytes).expect("recovery succeeds");
+    let recovery = recover(config(), Some(loaded), &bytes).expect("recovery succeeds");
     let report = recovery.report;
     println!(
         "recovery: frames_skipped={} frames_applied={} discarded={} last_recovered_seq={}",
