@@ -591,7 +591,12 @@ pub fn save_snapshot_with_hook(
     if !hook(SaveStep::Renamed) {
         return Ok(());
     }
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    // A bare file name has an empty parent, which names the
+    // current directory (finding A-9, decided in lane R6).
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
     let dir = File::open(parent).map_err(|e| WalError::io("open snapshot directory", e))?;
     dir.sync_all()
         .map_err(|e| WalError::io("sync snapshot directory", e))?;
@@ -871,6 +876,23 @@ mod tests {
         let err = load_snapshot(&path, &config).expect_err("no target, only a tmp");
         assert!(matches!(err, WalError::Io { .. }), "got {err:?}");
         std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn snapshot_save_and_load_accept_bare_file_name() {
+        // Finding A-9, decided in lane R6: a bare file name has an
+        // empty parent, which names the current directory. Save
+        // normalises it instead of failing to open the parent, and
+        // the round trip works exactly as with an explicit parent.
+        let state = hand_state();
+        let path = PathBuf::from(format!(
+            "chronicle-wal-bare-name-{}.snapshot",
+            std::process::id()
+        ));
+        save_snapshot(&path, &state).expect("save under a bare file name");
+        let loaded = load_snapshot(&path, &state.config).expect("load under a bare file name");
+        assert_eq!(loaded, state);
+        std::fs::remove_file(&path).expect("remove the bare-name snapshot");
     }
 
     #[test]
