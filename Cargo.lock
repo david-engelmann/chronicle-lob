@@ -164,7 +164,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "chronicle-cli"
+name = "chronicle-lob-cli"
 version = "0.1.0"
 dependencies = [
  "chronicle-core",
