@@ -24,5 +24,9 @@ harness = false
 name = "bench_recovery"
 harness = false
 
+[[bench]]
+name = "bench_snapshot"
+harness = false
+
 [lints]
 workspace = true

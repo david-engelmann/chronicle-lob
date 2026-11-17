@@ -29,5 +29,13 @@ harness = false
 name = "bench_depth"
 harness = false
 
+[[bench]]
+name = "bench_amend"
+harness = false
+
+[[bench]]
+name = "bench_mass_cancel"
+harness = false
+
 [lints]
 workspace = true
