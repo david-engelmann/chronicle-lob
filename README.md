@@ -53,8 +53,12 @@ The project was built in four milestones, and all four have landed.
 - Milestone 4 has landed. A command line tool for replaying and
   benchmarking a book, plus the final performance proof work.
 
-All three crates exist today. Nothing here is published to
-crates.io yet.
+All three crates are published on crates.io, at version 0.2.0
+today. The write-ahead log reads and recovery run in a streaming
+fashion, so a log larger than memory can be verified, replayed,
+and recovered in bounded memory. Continuous integration runs
+the test and examples suites on Linux, macOS, and Windows, so
+every supported platform is exercised on every change.
 
 ## A short example
 
@@ -182,7 +186,9 @@ The test suite includes property tests that run the engine against a
 simple independent reference implementation and compare the full
 event streams. Set `PROPTEST_CASES` to control how many cases they
 run. Continuous integration runs 1,000 cases per pull request and
-10,000 on the main branch.
+10,000 on the main branch. The main branch sweeps rotate their seed
+with each run, so successive runs explore new cases, and the seed in
+force is printed in the run log.
 
 The suite also includes a proof that the engine performs no heap
 allocations across one million mixed operations, and criterion
@@ -197,8 +203,8 @@ benchmarks for matching, depth queries, log appends, and recovery.
   want the data structures, the formats, and the reasoning.
 - `docs/INVARIANTS.md` lists every correctness rule the engine
   promises, and names the exact test that enforces each one.
-- `docs/ROADMAP.md` is the post-M4 plan, six scoped lanes with
-  their gates, publication readiness first.
+- `docs/ROADMAP.md` records the post-M4 programmes and their
+  lanes, from publication readiness through the current work.
 - `DECISIONS.md` records the locked project decisions.
 - `CONTRIBUTING.md` explains how the project is built and tested.
 

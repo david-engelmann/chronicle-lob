@@ -5,6 +5,16 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation currency. ARCHITECTURE.md section 14 now
+  describes the CI that exists, all fifteen jobs and the four
+  dispatch workflows, with the macOS test leg's cancellation
+  remedy recorded. The README states the published state, the
+  streaming reads and recovery, and the platform coverage, and
+  no longer says the crates are unpublished (programme 3, lane
+  T4).
+
 ## [0.2.0] - 2026-11-17
 
 The second public release. All three crates are published on
