@@ -5,9 +5,11 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
-Prepared for 0.2.0. The version bump has landed in every manifest
-and the lock file, and this section is the release record. The
-publish itself waits on direction call DC-4 in docs/ROADMAP.md.
+## [0.2.0] - 2026-11-17
+
+The second public release. All three crates are published on
+crates.io at 0.2.0 and verified from the registry and the sparse
+index, under direction call DC-4 in docs/ROADMAP.md.
 
 ### Added
 
@@ -32,6 +34,12 @@ publish itself waits on direction call DC-4 in docs/ROADMAP.md.
 
 ### Changed
 
+- CI exploration seeds now rotate. The two main seed sweeps
+  derive their SIM_SEED from the run number and the mutation
+  harness takes its seed from CHRONICLE_MUTATION_SEED, which the
+  deep workflow derives per dispatch or accepts as an input. The
+  seed in force is printed in every run, so any failure still
+  reproduces exactly (programme 3, lane T3).
 - The CRC32C checksum now consumes eight bytes per step through
   slicing-by-8 tables built at compile time. WAL append runs at
   1.60 times its former throughput and recovery at 1.26 times,

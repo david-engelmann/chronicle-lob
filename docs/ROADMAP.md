@@ -459,7 +459,16 @@ record argues for.
 
 ### Direction calls for programme 3
 
-- DC-4, the 0.2.0 publish. OPEN, and it is David's call, as the
-  0.1.0 publish was under DC-1. The readiness work (changelog,
-  version bump) proceeds without it; the publish runs only on
-  his word.
+- DC-4, the 0.2.0 publish. DECIDED by David on 2026-11-17, in
+  the main chat relay, "release 0.2.0", and exercised the same
+  day. All three crates were packaged by the hosted publish
+  workflow on main 403cbebd (runs 44192321984, 44192851709,
+  44193284451), uploaded in dependency order with zero warnings,
+  and confirmed live on the registry API and the sparse index
+  with the dependency lines resolved at 0.2.0. One repair rode
+  along: the publish workflow's artifact path named the 0.1.0
+  file literally and failed the first 0.2.0 packaging run at the
+  upload step; PR #27 made the path a version glob. The
+  verify-published workflow's pins move to 0.2.0 in the release
+  record commit, and tag v0.2.0 marks the record head, as v0.1.0
+  did.
