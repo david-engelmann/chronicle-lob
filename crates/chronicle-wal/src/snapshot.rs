@@ -41,7 +41,9 @@ pub enum SaveStep {
     TmpSynced,
     /// The `.tmp` file is renamed over the target.
     Renamed,
-    /// The parent directory is synced, making the rename durable.
+    /// The parent directory step has run. On Unix the directory is
+    /// synced, making the rename durable; on other platforms the
+    /// step is a no-op by platform definition (section 10.3).
     DirSynced,
 }
 
@@ -516,7 +518,7 @@ fn tmp_path(path: &Path) -> PathBuf {
 
 /// Save a snapshot atomically (the protocol of section 10.3): encode,
 /// write the `.tmp` sibling, sync it, rename it over the target,
-/// then sync the parent directory.
+/// then run the parent directory step.
 ///
 /// # Examples
 ///
@@ -597,10 +599,30 @@ pub fn save_snapshot_with_hook(
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
+    sync_parent_directory(parent)?;
+    hook(SaveStep::DirSynced);
+    Ok(())
+}
+
+/// Make the rename durable by syncing the parent directory.
+///
+/// Unix exposes a directory as a syncable handle, and this step is
+/// what makes the rename itself survive a crash (section 10.3).
+#[cfg(unix)]
+fn sync_parent_directory(parent: &Path) -> Result<(), WalError> {
     let dir = File::open(parent).map_err(|e| WalError::io("open snapshot directory", e))?;
     dir.sync_all()
-        .map_err(|e| WalError::io("sync snapshot directory", e))?;
-    hook(SaveStep::DirSynced);
+        .map_err(|e| WalError::io("sync snapshot directory", e))
+}
+
+/// The non-Unix form of the parent directory step: a no-op by
+/// platform definition. Windows offers no operation that syncs a
+/// directory, and opening one as a file fails there, so the
+/// rename's durability rests on the filesystem's own metadata
+/// journal. That is the per-platform contract of section 10.3
+/// (programme 2, lane S4).
+#[cfg(not(unix))]
+fn sync_parent_directory(_parent: &Path) -> Result<(), WalError> {
     Ok(())
 }
 

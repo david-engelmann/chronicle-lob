@@ -305,3 +305,60 @@ jobs:
           diff -u crates/chronicle-core/examples/book_session.expected.txt /tmp/book_session.out
           cargo run --locked -p chronicle-wal --example wal_recovery > /tmp/wal_recovery.out
           diff -u crates/chronicle-wal/examples/wal_recovery.expected.txt /tmp/wal_recovery.out
+
+  # Roadmap programme 2, lane S4 (docs/ROADMAP.md): the test and
+  # examples gates also run on macOS and Windows at PR volume, so
+  # the platform reach is proven on every change rather than
+  # assumed. The steps mirror the ubuntu jobs; the Windows legs run
+  # them under Git Bash so one script serves every platform.
+  test-platforms:
+    name: test (PR volume, macOS and Windows)
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      PROPTEST_CASES: "1000"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check workspace presence
+        id: ws
+        shell: bash
+        run: |
+          if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
+      - name: cargo test --workspace --locked
+        if: steps.ws.outputs.present == 'true'
+        shell: bash
+        run: |
+          echo "SIM_SEED=$SIM_SEED PROPTEST_CASES=$PROPTEST_CASES"
+          cargo test --workspace --locked
+
+  examples-platforms:
+    name: examples run with pinned output (macOS and Windows)
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check workspace presence
+        id: ws
+        shell: bash
+        run: |
+          if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "present=false" >> "$GITHUB_OUTPUT";
+          echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
+      - name: Run the examples and diff against their pinned output
+        if: steps.ws.outputs.present == 'true'
+        shell: bash
+        run: |
+          cargo run --locked -p chronicle-core --example book_session > /tmp/book_session.out
+          diff -u crates/chronicle-core/examples/book_session.expected.txt /tmp/book_session.out
+          cargo run --locked -p chronicle-wal --example wal_recovery > /tmp/wal_recovery.out
+          diff -u crates/chronicle-wal/examples/wal_recovery.expected.txt /tmp/wal_recovery.out

@@ -807,11 +807,17 @@ Saving a snapshot performs, in order:
 3. sync_all on the temporary file.
 4. rename the temporary file over the target. Rename within one
    directory is atomic on the supported platforms.
-5. Open the parent directory and sync_all on it, so the rename itself
-   is durable.
+5. Run the parent directory step. On Unix, open the parent directory
+   and sync_all on it, so the rename itself is durable. On Windows
+   there is no operation that syncs a directory, and opening one as a
+   file fails, so the step is a defined no-op and the rename's
+   durability rests on the filesystem's own metadata journal
+   (programme 2, lane S4).
 
 A crash at any step leaves either the old snapshot fully intact or the
-new one fully intact. A leftover ".tmp" file is ignored by the loader
+new one fully intact, on every supported platform: rename within one
+directory is atomic on Unix filesystems and on NTFS alike, and only
+the way the rename's durability is obtained differs, per step 5. A leftover ".tmp" file is ignored by the loader
 and may be overwritten by the next save. Concurrent snapshot writers to
 the same target are out of scope: the system has one writer, matching
 the single-threaded engine.
@@ -883,6 +889,10 @@ the same for both formats and are binding on any future change:
 - A future reader that supports several versions still rejects
   the ones it does not know. Compatibility is always explicit,
   never assumed from a familiar magic.
+- The formats are byte-identical on every supported platform.
+  Every multi-byte field is little-endian by definition of the
+  format, never by host convention, so a log or a snapshot written
+  on one platform reads back on any other (programme 2, lane S4).
 
 ## 11. Determinism rules
 
@@ -1001,7 +1011,9 @@ docs/INVARIANTS.md is the normative mapping. Summary of the machinery:
 whole workspace with the lint posture of section 2.4, cargo test at PR
 volume, the 10,000 case seed sweep on main, rustdoc with
 -D warnings, the bench compile check, and the zero-dependency check on
-chronicle-core. At Milestone 0 the manifest does not exist yet and each
+chronicle-core. Programme 2 lane S4 added macOS and Windows legs for
+the test and examples gates at PR volume, so the supported platforms
+are exercised on every change; the remaining gates run on Ubuntu. At Milestone 0 the manifest does not exist yet and each
 cargo job reports that plainly and passes; from Milestone 1 the guards
 are inert and the gates run at full strength. The merge verdict for this
 program is hosted CI green on the exact head plus the milestone gate
