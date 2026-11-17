@@ -1,5 +1,5 @@
 //! INV-LAT-7 (ARCHITECTURE.md section 13): mass cancel latency,
-//! one cancel_by_participant call against a book at realistic
+//! one `cancel_by_participant` call against a book at realistic
 //! occupancy, 12,000 live orders across 240 active levels. The
 //! measured participant holds exactly 800 of those orders, and
 //! throughput is counted per cancelled order.
