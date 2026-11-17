@@ -4,6 +4,10 @@ Status: the four-milestone build (M0 through M4) is complete and fully
 gated at main head 387200b1. Hosted CI is green on all eight jobs
 including the 10,000-case seed sweep, 112 tests pass, and the M4 gate
 re-audit closed the INVARIANTS enforcement census at 65 of 65.
+Programme 1 below (lanes R1 through R6) is complete: every lane
+landed and verified on main at 38733778, and the only open item is
+DC-1, the publish act, which waits on David's word. Programme 2
+follows the direction calls and is the current working plan.
 
 This roadmap is the working plan for everything after M4. Each lane is
 scoped, ordered, and carries the gate it must pass. Lanes land through
@@ -235,3 +239,147 @@ of the wal test suite after R4.
 - DC-3, none open besides DC-1. Any future call the lanes surface
   gets recorded here in the same commit that raises it, rather than
   stopping the lane that found it.
+
+## Programme 2
+
+Written on 2026-11-16 from a fresh audit of the finished build at
+main 38733778, seeded by the two instruments programme 1 built for
+exactly this purpose: the performance baseline in
+docs/PERFORMANCE.md and the mutation harness of lane R6. Publication
+stays out of scope while DC-1 is parked. Every other lane runs under
+the standing delegation, through the same staged route as before.
+
+### Audit findings for programme 2
+
+Verified firsthand against main at 38733778 on 2026-11-16.
+
+- B-1. The baseline's add and cancel figures measure the harness as
+  much as the operation. Both benches use iter_batched with
+  SmallInput, rebuilding the 12,000-order occupied book for every
+  batch, so the recorded 123.45 and 117.82 microseconds carry setup
+  weight the operation itself does not. The baseline document flags
+  this honestly; nothing yet corrects the measurement.
+- B-2. The CRC32C implementation is byte-at-a-time: one 256-entry
+  table, one byte per step in Crc32c::update. The two throughput
+  surfaces the baseline measures, WAL append at 507.22 MiB/s into a
+  discarding sink and recovery at 325.00 MiB/s, both run this
+  checksum over every byte and do little else per byte.
+- B-3. Three hot paths have no benchmark at all. Amend is a core
+  operation with real work in it, cancel_by_participant drives the
+  mass-cancel path the invariants care about, and snapshot encode
+  and decode sit on the durability path. The baseline's seven
+  benchmarks cover none of them.
+- B-4. Every file read in the stack is whole-file. The CLI calls
+  fs::read at five sites, the library's scan and recover APIs are
+  slice-based, and read_log reads a whole file too. Log size is
+  therefore bounded by memory for the tools and for every library
+  consumer.
+- B-5. The snapshot save protocol opens the parent directory and
+  syncs it. That is a Unix operation: the engine and both formats
+  are otherwise platform-neutral, CI runs only Ubuntu, and the
+  save path as written would fail on Windows. The portability
+  claim is untested anywhere but Linux.
+- B-6. The R6 mutation harness mutates one point at a time and
+  runs 7,500 mutations per CI run. Multi-point corruption and
+  deep volumes are unexplored, and no dispatched deep run exists
+  to explore them with.
+
+### Lane S1: honest latency measurement
+
+Rework the add_resting and cancel benches in bench_add_cancel_best
+to measure operation streams on one pre-built occupied book: a
+fixed run of 1,000 distinct operations per iteration, throughput
+counted per operation, batch size large. The workload itself does
+not change (12,000 live orders across 240 levels, the same prices
+and quantities). best_bid_ask keeps its per-call shape.
+
+Gate: a fresh dispatch of the benchmarks workflow records the new
+figures in a dated docs/PERFORMANCE.md section that explains the
+harness change and why the new figures supersede the add and
+cancel rows of the first baseline for comparison purposes. The
+first baseline stays in the file as the historical record.
+
+### Lane S2: benchmark coverage completion
+
+Add the three missing benchmarks: bench_amend (amends against the
+occupied book), bench_mass_cancel (cancel_by_participant over the
+occupied book), and bench_snapshot (one encode and decode round
+trip of a snapshot state at a stated live order count). Each
+follows the existing bench conventions, black_box throughout and
+Throughput set per operation or per byte as fits.
+
+Gate: the bench compile check passes, and a dispatch records all
+three in docs/PERFORMANCE.md alongside the existing table.
+
+### Lane S3: CRC slicing
+
+Replace the byte-at-a-time CRC32C update with slicing-by-8: eight
+tables built at compile time beside the existing one, eight bytes
+per step, with a byte-at-a-time tail. The checksum values must not
+change by a single bit: the golden check value, the domain
+separation tests, and the frame and snapshot golden vectors all
+pin them already.
+
+Gate: the full suite passes at both volumes with every golden
+vector unchanged, and before and after figures for wal_append and
+recovery from two dispatches are recorded in docs/PERFORMANCE.md.
+If the after figures do not improve on the same machine class,
+the lane reports that and reverts rather than landing dead weight.
+
+### Lane S4: platform reach
+
+Add macOS and Windows legs to CI running the test and examples
+jobs at PR volume. Fix what surfaces. The known first suspect is
+the snapshot directory sync of finding B-5: keep the full
+protocol on platforms that support it, give the save path a
+defined behaviour where directory sync does not exist, and state
+the per-platform durability semantics honestly in
+ARCHITECTURE.md sections 10.3 and 10.5.
+
+Gate: all three platforms green on main, and the architecture
+text matches the behaviour the code now has.
+
+### Lane S5: streaming reads
+
+Give chronicle-wal a streaming scan: frames yielded from a Read
+source through bounded buffers, with the same framing decisions,
+offsets, and typed errors as scan_log, and a streaming recovery
+path if it composes cleanly with the same error shape. Move the
+CLI's verify and replay onto the streaming path so log size stops
+being bounded by memory anywhere in the stack. The slice-based
+APIs stay exactly as they are.
+
+Gate: the CLI test suite passes byte-identical on every pinned
+stream, a new test replays a generated 1,000,000-frame log
+through the CLI, and the library suite passes at both volumes.
+
+### Lane S6: mutation depth
+
+Extend the R6 harness with multi-point mutations (two and three
+simultaneous mutations drawn from the same seeded stream) at
+standard volume in the test job, and add a manually dispatched
+deep-mutation workflow on the bench workflow's pattern, running
+millions of mutations per surface with the outcome counts in the
+run log.
+
+Gate: a deep dispatch completes with zero panics, and the
+INV-WAL-7 enforcement cell names the multi-point coverage in the
+same commit as the harness change.
+
+### Order and dependencies for programme 2
+
+S1 runs first, because every later performance claim compares
+against the numbers it corrects. S2 follows, completing the
+coverage before any optimisation is argued from it. S3 is
+evidence-led and reads its before figures from the existing
+baseline, since the append and recovery benches were directly
+measured. S4 and S5 are independent of the performance lanes and
+of each other. S6 runs last, extending the harness once the
+surfaces it tests have settled.
+
+### Direction calls for programme 2
+
+None open. DC-1 remains parked exactly as programme 1 left it,
+and no lane in this programme depends on it. The Windows
+durability semantics in lane S4 are decided inside the lane and
+recorded in ARCHITECTURE.md, per the DC-3 rule.
