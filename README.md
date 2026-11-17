@@ -119,7 +119,7 @@ is too small.
 ## The command line tool
 
 The `chronicle-cli` binary works with the log and snapshot files
-the engine writes. It has four subcommands.
+the engine writes. It has five subcommands.
 
 - `replay` applies a write-ahead log to a book and prints every
   event the commands produce, in order.
@@ -127,6 +127,10 @@ the engine writes. It has four subcommands.
   sequence numbers and checksums are healthy.
 - `snapshot` replays a log and writes a snapshot of the book it
   rebuilds.
+- `checkpoint` replays a log, writes a snapshot, verifies the
+  snapshot by loading it back, and only then archives the log
+  under the sequence the snapshot covers, so a long-running log
+  stays bounded.
 - `bench` runs a seeded synthetic load against a fresh book and
   prints a summary, as plain text or as JSON with `--json`.
 
