@@ -1,0 +1,33 @@
+name: deep mutation
+
+# Roadmap programme 2, lane S6 (docs/ROADMAP.md): the mutation
+# harness in the regular CI jobs runs at the standard volume
+# (3,000 cases per WAL surface, 1,500 per snapshot surface). This
+# manually dispatched workflow raises the volume to 100,000 and
+# 50,000 through CHRONICLE_MUTATION_CASES, for a deep pass over
+# the decoders when a change wants one. The harness runs in
+# release mode here so the deep volume stays practical; the
+# standard CI run remains the per-change gate.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-deep-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CHRONICLE_MUTATION_CASES: "100000"
+
+jobs:
+  mutation-deep:
+    name: mutation harness (deep volume, 100,000 cases)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: cargo test --release -p chronicle-wal --test mutation --locked
+        run: cargo test --release -p chronicle-wal --test mutation --locked
