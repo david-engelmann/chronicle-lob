@@ -127,7 +127,8 @@ fn bench_add_cancel_best(c: &mut Criterion) {
             |(mut book, mut storage)| {
                 for i in 0..STREAM {
                     let mut events = EventBuffer::new(&mut storage);
-                    black_box(book.cancel_order(OrderId(STREAM_FIRST_ID + i), &mut events));
+                    book.cancel_order(OrderId(STREAM_FIRST_ID + i), &mut events)
+                        .expect("stream cancel removes its target");
                     storage.clear();
                 }
                 (book, storage)
