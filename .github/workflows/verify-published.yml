@@ -1,0 +1,111 @@
+name: verify-published
+
+# Proves the published 0.1.0 crates work the way a stranger
+# consumes them (docs/ROADMAP.md, direction call DC-1). Manual
+# dispatch only, run after all three crates are live on crates.io.
+# One job builds and runs a scratch binary against the published
+# chronicle-core and chronicle-wal; the other installs the
+# published chronicle-lob-cli and runs its bench subcommand.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  scratch-project:
+    name: scratch project builds on the published libraries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Create the scratch project
+        run: |
+          cargo new scratch-consumer
+          cd scratch-consumer
+          cargo add chronicle-core@0.1.0
+          cargo add chronicle-wal@0.1.0
+      - name: Write the smoke program
+        run: |
+          cat > scratch-consumer/src/main.rs <<'EOF'
+          use std::io;
+
+          use chronicle_core::{Book, BookConfig, EventBuffer, OrderId, OrderType, ParticipantId, Side, StpPolicy};
+          use chronicle_wal::{SyncPolicy, WalCommand, WalSink, WalWriter};
+
+          #[derive(Default)]
+          struct VecSink(Vec<u8>);
+
+          impl io::Write for VecSink {
+              fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+                  self.0.extend_from_slice(data);
+                  Ok(data.len())
+              }
+
+              fn flush(&mut self) -> io::Result<()> {
+                  Ok(())
+              }
+          }
+
+          impl WalSink for VecSink {
+              fn sync_data(&mut self) -> io::Result<()> {
+                  Ok(())
+              }
+          }
+
+          fn main() {
+              let config = BookConfig {
+                  max_orders: 64,
+                  grid_len: 640,
+                  tick_size: 1,
+                  grid_start_tick: 1,
+                  default_stp: StpPolicy::CancelIncoming,
+              };
+              let mut book = Book::new(config);
+              let mut storage = Vec::with_capacity(64);
+              let mut events = EventBuffer::new(&mut storage);
+              book.add_order(OrderId(1), ParticipantId(1), Side::Bid, OrderType::Limit, 100, 10, None, &mut events)
+                  .expect("add rests");
+              let mut writer = WalWriter::new(VecSink::default(), SyncPolicy::Never);
+              let command = WalCommand::Add {
+                  order_id: OrderId(1),
+                  participant: ParticipantId(1),
+                  side: Side::Bid,
+                  order_type: OrderType::Limit,
+                  stp: None,
+                  price: 100,
+                  qty: 10,
+              };
+              writer.append(&command, 1).expect("append writes");
+              let bytes = writer.into_inner().0;
+              let recovery = chronicle_wal::recover(config, None, &bytes).expect("recovery succeeds");
+              assert_eq!(recovery.book.live_order_count(), 1);
+              assert_eq!(recovery.book.best_bid(), Some((100, 10)));
+              println!(
+                  "scratch consumer ok: live_orders={} frames_applied={}",
+                  recovery.book.live_order_count(),
+                  recovery.report.frames_applied
+              );
+          }
+          EOF
+      - name: Build and run against the published crates
+        working-directory: scratch-consumer
+        run: cargo run
+
+  install-cli:
+    name: cargo install of the published CLI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install chronicle-lob-cli from crates.io
+        run: cargo install chronicle-lob-cli --version 0.1.0 --root "$RUNNER_TEMP/chronicle-install"
+      - name: Run the installed binary
+        run: |
+          "$RUNNER_TEMP/chronicle-install/bin/chronicle-cli" bench --ops 10000 --seed 1
+          "$RUNNER_TEMP/chronicle-install/bin/chronicle-cli" bench --ops 10000 --seed 1 --json
