@@ -191,13 +191,17 @@ fn mutate(base: &[u8], rng: &mut SplitMix64, kind: usize) -> (Vec<u8>, usize) {
     (bytes, offset)
 }
 
+/// One mutation step: base bytes, generator, and kind in,
+/// mutated bytes and centre offset out.
+type MutateFn = fn(&[u8], &mut SplitMix64, usize) -> (Vec<u8>, usize);
+
 /// Apply a multi-point mutation (lane S6): two value changes at
 /// distinct offsets, or a value change paired with a truncation,
 /// in a fixed rotation by kind (0 two bit flips, 1 two byte
 /// overwrites, 2 a flip and an overwrite, 3 a flip and a
 /// truncation). Returns the mutated bytes with the first offset.
 fn mutate_multi(base: &[u8], rng: &mut SplitMix64, kind: usize) -> (Vec<u8>, usize) {
-    fn flip(bytes: &mut [u8], rng: &mut SplitMix64, offset: usize) {
+    const fn flip(bytes: &mut [u8], rng: &mut SplitMix64, offset: usize) {
         bytes[offset] ^= 1u8 << (rng.next_u64() % 8);
     }
     fn overwrite(bytes: &mut [u8], rng: &mut SplitMix64, offset: usize) {
@@ -245,7 +249,7 @@ fn run_surface(
     iterations: usize,
     surface: &str,
     mut feed: impl FnMut(&[u8]) -> bool,
-    mutate_fn: fn(&[u8], &mut SplitMix64, usize) -> (Vec<u8>, usize),
+    mutate_fn: MutateFn,
 ) -> (usize, usize) {
     let mut rng = SplitMix64::new(SEED);
     let mut valid = 0usize;
