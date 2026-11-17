@@ -356,11 +356,14 @@ jobs:
           if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
           else echo "present=false" >> "$GITHUB_OUTPUT";
           echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
+      # The diff ignores carriage returns at line ends: the
+      # Windows text convention adds them on one side or the
+      # other, and the pinned guarantee is the text itself.
       - name: Run the examples and diff against their pinned output
         if: steps.ws.outputs.present == 'true'
         shell: bash
         run: |
           cargo run --locked -p chronicle-core --example book_session > /tmp/book_session.out
-          diff -u crates/chronicle-core/examples/book_session.expected.txt /tmp/book_session.out
+          diff --strip-trailing-cr -u crates/chronicle-core/examples/book_session.expected.txt /tmp/book_session.out
           cargo run --locked -p chronicle-wal --example wal_recovery > /tmp/wal_recovery.out
-          diff -u crates/chronicle-wal/examples/wal_recovery.expected.txt /tmp/wal_recovery.out
+          diff --strip-trailing-cr -u crates/chronicle-wal/examples/wal_recovery.expected.txt /tmp/wal_recovery.out
