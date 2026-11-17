@@ -1,0 +1,44 @@
+name: publish-package
+
+# Packages one crate for a crates.io release (docs/ROADMAP.md,
+# direction call DC-1). Manual dispatch only. The job runs the
+# full cargo package verification build on the pinned toolchain
+# and uploads the .crate file as an artifact; the upload to
+# crates.io itself happens outside Actions with the owner's
+# credential, so no registry secret ever lives in this repo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: "Crate to package"
+        required: true
+        type: choice
+        options:
+          - chronicle-core
+          - chronicle-wal
+          - chronicle-lob-cli
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  package:
+    name: package ${{ inputs.crate }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Package with full verification build
+        run: cargo package -p ${{ inputs.crate }} --locked
+      - name: Upload the packaged crate
+        uses: actions/upload-artifact@v4
+        with:
+          name: crate-${{ inputs.crate }}
+          path: target/package/${{ inputs.crate }}-0.1.0.crate
+          if-no-files-found: error
