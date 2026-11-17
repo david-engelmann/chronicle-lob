@@ -436,26 +436,35 @@ through it. Landed at afce63d4 (PR #25).
 Backfill the changelog for programmes 2 and 3, bump every
 manifest and the lock file to 0.2.0, and raise DC-4. Standing
 rule from this lane on: every landing lane adds its changelog
-entry in the same commit.
+entry in the same commit. Landed at f0525b63 (PR #26).
 
 ### Lane T3: seed rotation (C-3)
 
 The sweeps and the mutation harness take a seed that rotates on
 a stated cadence and is printed in every run; the deep workflow
-gains a seed input.
+gains a seed input. Landed at b37c9188 (PR #29). The first
+rotated main run's sweeps ran at SIM_SEED 10097 and 20097, and
+the deep dispatch derived seed 70002.
 
 ### Lane T4: documentation currency, with T6 folded in (C-4, C-7, C-5)
 
 Section 14 rewritten to the real gate map including all four
 workflows; the README gains the platform and streaming
 statements; the macOS leg's standing remedy is recorded, or a
-workflow-level retry replaces it.
+workflow-level retry replaces it. Landed at 5b7481ca (PR #30),
+the remedy recorded rather than automated.
 
 ### Lane T5: checkpoint story (C-6)
 
 Design first: a short decision record on the snapshot and
 fresh-log loop, then the minimal library and CLI support the
-record argues for.
+record argues for. Landed at 8a658624 (PR #31). The record is
+ARCHITECTURE.md section 10.6; the support is the CLI checkpoint
+subcommand, and the library gained no function, as the record
+argues.
+
+Programme 3 is complete: findings C-1 to C-7 are closed, and
+DC-4 stands decided and exercised in the direction calls below.
 
 ### Direction calls for programme 3
 
