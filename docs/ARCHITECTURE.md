@@ -915,6 +915,40 @@ the same for both formats and are binding on any future change:
   format, never by host convention, so a log or a snapshot written
   on one platform reads back on any other (programme 2, lane S4).
 
+### 10.6 Checkpointing (programme 3, lane T5)
+
+A write-ahead log grows with every command, and a snapshot alone
+does not bound it: recovery skips the frames a snapshot covers,
+but the covered bytes still sit in the log. Checkpointing is the
+operational loop that bounds the growth, and it is a composition
+of the existing primitives rather than a new mechanism:
+
+1. Recover the book from the log (the streaming form, section
+   9.5, so the loop itself is bounded in memory).
+2. Capture the state and save it through the atomic protocol of
+   section 10.3.
+3. Verify before archiving: load the saved snapshot back and
+   confirm it names the sequence the log reached. Until this
+   passes, the log is not touched, so a failed checkpoint leaves
+   the deployment exactly as it was, with at most an extra
+   snapshot file standing by.
+4. Archive the log by renaming it to the log's own path with the
+   covered sequence appended (book.wal becomes
+   book.wal.archive-5). A later checkpoint at a higher sequence
+   archives under its own name; an archive at the same sequence
+   is replaced, because it can only be the same covered prefix.
+   The embedding application then starts a fresh log at the
+   snapshot's next sequence, and recovery from the snapshot plus
+   the fresh log continues the book.
+
+The CLI performs the loop as the checkpoint subcommand. The
+library deliberately gains no checkpoint function: the
+primitives (recover_from_reader, save_snapshot, load_snapshot)
+already carry the semantics, and the loop is orchestration an
+operator runs, not state the engine keeps. The archive is a
+rename, never a delete, so the covered history survives until
+the operator chooses to retire it.
+
 ## 11. Determinism rules
 
 Binding on chronicle-core and on the recovery path of chronicle-wal:

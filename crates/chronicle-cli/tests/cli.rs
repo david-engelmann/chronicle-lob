@@ -411,6 +411,88 @@ fn snapshot_writes_a_loadable_snapshot() {
 }
 
 #[test]
+fn checkpoint_writes_a_verified_snapshot_and_archives_the_log() {
+    // Lane T5 (ARCHITECTURE.md section 10.6): checkpoint recovers
+    // the session log, writes the snapshot, verifies it by loading
+    // it back, and only then archives the log under the covered
+    // sequence. Recovery continues from the pair.
+    let session = build_session("checkpoint");
+    let wal_bytes = fs::read(&session.wal).expect("read wal");
+    let out_path = session.dir.join("checkpoint.snapshot");
+    let archive = session.dir.join("book.wal.archive-5");
+    let mut args = vec![
+        "checkpoint",
+        "--wal",
+        session.wal.to_str().unwrap(),
+        "--out",
+        out_path.to_str().unwrap(),
+    ];
+    args.extend(CONFIG_FLAGS);
+    let output = run_cli(&args);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        stdout_of(&output),
+        format!(
+            "checkpoint: written last_included_seq=5 live_orders=1 archived_log={}\n",
+            archive.display()
+        )
+    );
+    assert!(!session.wal.exists(), "the live log moved to the archive");
+    assert_eq!(
+        fs::read(&archive).expect("read archive"),
+        wal_bytes,
+        "the archive holds the log byte for byte"
+    );
+    let loaded = load_snapshot(&out_path, &config()).expect("checkpoint snapshot loads");
+    assert_eq!(loaded, session.final_state);
+
+    // The pair verifies: the snapshot covers the archived log in
+    // full, and recovery continues from exactly this state.
+    let verify_args = vec![
+        "verify",
+        "--wal",
+        archive.to_str().unwrap(),
+        "--snapshot",
+        out_path.to_str().unwrap(),
+    ];
+    let output = run_cli(&verify_args);
+    assert!(output.status.success());
+    assert_eq!(
+        stdout_of(&output),
+        "snapshot: ok last_included_seq=5 live_orders=1\nwal: ok frames=5 discarded=0 last_seq=5\nverdict: ok\n"
+    );
+    let _ = fs::remove_dir_all(&session.dir);
+}
+
+#[test]
+fn checkpoint_of_a_missing_log_is_a_usage_error() {
+    let dir = test_dir("checkpoint-missing");
+    let missing = dir.join("nope.wal");
+    let out_path = dir.join("checkpoint.snapshot");
+    let mut args = vec![
+        "checkpoint",
+        "--wal",
+        missing.to_str().unwrap(),
+        "--out",
+        out_path.to_str().unwrap(),
+    ];
+    args.extend(CONFIG_FLAGS);
+    let output = run_cli(&args);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).starts_with("error: cannot read log"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!out_path.exists(), "no snapshot is written on failure");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn config_flags_are_required_without_a_snapshot() {
     let session = build_session("flags-required");
     let output = run_cli(&["replay", "--wal", session.wal.to_str().unwrap()]);

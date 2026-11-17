@@ -5,6 +5,15 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- The CLI checkpoint subcommand. It recovers a book from a log,
+  writes a snapshot, verifies the snapshot by loading it back,
+  and only then archives the log under the sequence the snapshot
+  covers, bounding a long-running log's growth. The loop and its
+  safety order are recorded in ARCHITECTURE.md section 10.6
+  (programme 3, lane T5).
+
 ### Changed
 
 - Documentation currency. ARCHITECTURE.md section 14 now

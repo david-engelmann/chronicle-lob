@@ -1,16 +1,17 @@
 //! chronicle-cli, the command line tool for chronicle books
-//! (ARCHITECTURE.md section 2.3). One binary with four subcommands:
+//! (ARCHITECTURE.md section 2.3). One binary with five subcommands:
 //! replay applies a write-ahead log to a book and prints the event
 //! stream, verify reports the sequence and checksum health of a log
-//! and snapshot pair, snapshot writes a snapshot from a log, and
-//! bench runs a seeded synthetic load. This is the only crate in the
-//! workspace that parses text or prints JSON. Output ordering is
-//! fully determined by the input files and the seed.
+//! and snapshot pair, snapshot writes a snapshot from a log,
+//! checkpoint writes a verified snapshot and archives the log it
+//! covers, and bench runs a seeded synthetic load. This is the only
+//! crate in the workspace that parses text or prints JSON. Output
+//! ordering is fully determined by the input files and the seed.
 
 #![forbid(unsafe_code)]
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use chronicle_core::{
@@ -36,7 +37,7 @@ fn parser() -> Command {
         .help("Seed for seeded work; honours SIM_SEED");
     Command::new("chronicle-cli")
         .version(env!("CARGO_PKG_VERSION"))
-        .about("Replay, verify, snapshot, and benchmark chronicle books")
+        .about("Replay, verify, snapshot, checkpoint, and benchmark chronicle books")
         .subcommand_required(true)
         .arg_required_else_help(true)
         .arg(seed)
@@ -57,6 +58,20 @@ fn parser() -> Command {
         .subcommand(
             Command::new("snapshot")
                 .about("Write a snapshot from a write-ahead log")
+                .arg(wal_arg())
+                .arg(
+                    Arg::new("out")
+                        .long("out")
+                        .value_name("PATH")
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .required(true)
+                        .help("Snapshot file to write"),
+                )
+                .args(config_args(false)),
+        )
+        .subcommand(
+            Command::new("checkpoint")
+                .about("Write a verified snapshot and archive the log it covers")
                 .arg(wal_arg())
                 .arg(
                     Arg::new("out")
@@ -433,6 +448,68 @@ fn run_snapshot(sub: &ArgMatches) -> ExitCode {
     }
 }
 
+/// The archive path for a checkpointed log: the log's own path
+/// with the covered sequence appended, so successive checkpoints
+/// of one log archive under distinct names.
+fn archive_path_for(wal_path: &Path, last_included_seq: u64) -> PathBuf {
+    let mut name = wal_path.as_os_str().to_os_string();
+    name.push(format!(".archive-{last_included_seq}"));
+    PathBuf::from(name)
+}
+
+fn checkpoint_command(sub: &ArgMatches) -> Result<(), String> {
+    let config = config_from_flags(sub);
+    let wal_path = sub
+        .get_one::<PathBuf>("wal")
+        .expect("the parser requires --wal")
+        .clone();
+    let out_path = sub
+        .get_one::<PathBuf>("out")
+        .expect("the parser requires --out")
+        .clone();
+    let file = fs::File::open(&wal_path)
+        .map_err(|e| format!("cannot read log {}: {e}", wal_path.display()))?;
+    let recovery = recover_from_reader(config, None, file).map_err(|e| e.to_string())?;
+    let state = recovery.book.capture_snapshot_state();
+    let last_included_seq = state.next_seq - 1;
+    save_snapshot(&out_path, &state).map_err(|e| e.to_string())?;
+    // Verify before archiving (ARCHITECTURE.md section 10.6): the
+    // snapshot on disk must load and name the sequence the log
+    // reached. Until this passes, the log stays where it is.
+    let loaded = load_snapshot(&out_path, &config).map_err(|e| e.to_string())?;
+    if loaded.next_seq != state.next_seq {
+        return Err(format!(
+            "checkpoint verification failed: the snapshot names next_seq {} but the log reached {}",
+            loaded.next_seq, state.next_seq
+        ));
+    }
+    let archive_path = archive_path_for(&wal_path, last_included_seq);
+    if archive_path.exists() {
+        fs::remove_file(&archive_path).map_err(|e| {
+            format!(
+                "cannot replace archived log {}: {e}",
+                archive_path.display()
+            )
+        })?;
+    }
+    fs::rename(&wal_path, &archive_path)
+        .map_err(|e| format!("cannot archive log {}: {e}", wal_path.display()))?;
+    println!(
+        "checkpoint: written last_included_seq={} live_orders={} archived_log={}",
+        last_included_seq,
+        state.live_orders.len(),
+        archive_path.display()
+    );
+    Ok(())
+}
+
+fn run_checkpoint(sub: &ArgMatches) -> ExitCode {
+    match checkpoint_command(sub) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(message) => fail(&message),
+    }
+}
+
 /// `SplitMix64`, the workspace's deterministic generator (section 11).
 struct SplitMix64(u64);
 
@@ -595,6 +672,7 @@ fn main() -> ExitCode {
         Some(("replay", sub)) => run_replay(sub),
         Some(("verify", sub)) => verify(sub),
         Some(("snapshot", sub)) => run_snapshot(sub),
+        Some(("checkpoint", sub)) => run_checkpoint(sub),
         Some(("bench", sub)) => run_bench(sub),
         _ => ExitCode::from(2),
     }
