@@ -18,7 +18,8 @@ use chronicle_core::{
     Side, StpPolicy,
 };
 use chronicle_wal::{
-    ScannedFrame, WalError, load_snapshot, recover, save_snapshot, scan_reader, snapshot_config,
+    ScannedFrame, WalError, load_snapshot, recover_from_reader, save_snapshot, scan_reader,
+    snapshot_config,
 };
 use clap::{Arg, ArgMatches, Command};
 
@@ -412,9 +413,9 @@ fn snapshot_command(sub: &ArgMatches) -> Result<(), String> {
         .get_one::<PathBuf>("out")
         .expect("the parser requires --out")
         .clone();
-    let bytes =
-        fs::read(&wal_path).map_err(|e| format!("cannot read log {}: {e}", wal_path.display()))?;
-    let recovery = recover(config, None, &bytes).map_err(|e| e.to_string())?;
+    let file = fs::File::open(&wal_path)
+        .map_err(|e| format!("cannot read log {}: {e}", wal_path.display()))?;
+    let recovery = recover_from_reader(config, None, file).map_err(|e| e.to_string())?;
     let state = recovery.book.capture_snapshot_state();
     save_snapshot(&out_path, &state).map_err(|e| e.to_string())?;
     println!(

@@ -28,7 +28,7 @@ pub use crc::{Crc32c, crc32c};
 pub use error::{SnapshotCorruption, WalCorruption, WalError};
 pub use frame::{FrameParse, HEADER_LEN, MAX_PAYLOAD_LEN, WalCommand, encode_frame, parse_frame};
 pub use reader::{LogScanner, ScanOutcome, ScannedFrame, read_log, scan_log, scan_reader};
-pub use recover::{Recovery, RecoveryReport, recover, recover_from_files};
+pub use recover::{Recovery, RecoveryReport, recover, recover_from_files, recover_from_reader};
 pub use snapshot::{
     SaveStep, decode_snapshot, encode_snapshot, encoded_len, load_snapshot, save_snapshot,
     save_snapshot_with_hook, snapshot_config,

@@ -724,6 +724,15 @@ by memory. The streaming outcome is `scan_log`'s outcome over the
 same bytes, proven across every truncation of the fixture log at
 several chunk sizes (INV-WAL-2).
 
+Programme 3 lane T1 extends the same streaming to recovery:
+`recover_from_reader` applies frames as the scanner produces
+them, and `recover_from_files` and the CLI's snapshot command
+read through it. Its one contract difference from the slice form
+is error ordering, stated on the function itself: streaming
+surfaces errors in stream order, while the slice form scans the
+whole log before applying a single frame, so there the scanning
+error always wins.
+
 ### 9.6 What the WAL does not store
 
 Rejected commands are not written: they changed nothing, and replaying

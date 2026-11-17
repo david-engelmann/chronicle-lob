@@ -560,5 +560,29 @@ fn verify_and_replay_stream_a_million_frame_log() {
         stdout.lines().last(),
         Some("1000000 accepted order=1000000")
     );
+
+    // Lane T1: the snapshot subcommand recovers through the
+    // streaming form as well, over the same million-frame log.
+    let snapshot_out = dir.join("million.snapshot");
+    let output = run_cli(&[
+        "snapshot",
+        "--wal",
+        wal.to_str().unwrap(),
+        "--out",
+        snapshot_out.to_str().unwrap(),
+        "--max-orders",
+        "1000000",
+        "--grid-len",
+        "640",
+        "--tick-size",
+        "1",
+        "--grid-start-tick",
+        "1",
+    ]);
+    assert!(output.status.success());
+    assert_eq!(
+        stdout_of(&output),
+        "snapshot: written last_included_seq=1000000 live_orders=1000000\n"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
