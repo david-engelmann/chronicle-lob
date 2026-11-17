@@ -27,7 +27,7 @@ pub(crate) mod writer;
 pub use crc::{Crc32c, crc32c};
 pub use error::{SnapshotCorruption, WalCorruption, WalError};
 pub use frame::{FrameParse, HEADER_LEN, MAX_PAYLOAD_LEN, WalCommand, encode_frame, parse_frame};
-pub use reader::{ScanOutcome, ScannedFrame, read_log, scan_log};
+pub use reader::{LogScanner, ScanOutcome, ScannedFrame, read_log, scan_log, scan_reader};
 pub use recover::{Recovery, RecoveryReport, recover, recover_from_files};
 pub use snapshot::{
     SaveStep, decode_snapshot, encode_snapshot, encoded_len, load_snapshot, save_snapshot,

@@ -509,3 +509,56 @@ fn bench_seed_comes_from_sim_seed_and_flag_wins() {
     );
     assert!(stdout_of(&from_flag).starts_with("seed=9\n"));
 }
+
+#[test]
+fn verify_and_replay_stream_a_million_frame_log() {
+    // Lane S5: verify and replay read the log through the
+    // streaming scanner, so a log far larger than the fixture
+    // session runs in bounded memory with byte-identical output.
+    let dir = test_dir("million-frames");
+    let wal = dir.join("million.wal");
+    let file = fs::File::create(&wal).expect("create wal");
+    let mut writer = WalWriter::new(file, SyncPolicy::Never);
+    for seq in 1..=1_000_000_u64 {
+        writer
+            .append(&add(seq, 1, Side::Bid, 100, 1), seq)
+            .expect("append");
+    }
+    drop(writer);
+
+    let mut args = vec!["verify", "--wal", wal.to_str().unwrap()];
+    args.extend(CONFIG_FLAGS);
+    let output = run_cli(&args);
+    assert!(output.status.success());
+    assert_eq!(
+        stdout_of(&output),
+        "wal: ok frames=1000000 discarded=0 last_seq=1000000\nverdict: ok\n"
+    );
+
+    let output = run_cli(&[
+        "replay",
+        "--wal",
+        wal.to_str().unwrap(),
+        "--seed",
+        "0",
+        "--max-orders",
+        "1000000",
+        "--grid-len",
+        "640",
+        "--tick-size",
+        "1",
+        "--grid-start-tick",
+        "1",
+    ]);
+    assert!(output.status.success());
+    let stdout = stdout_of(&output);
+    let mut lines = stdout.lines();
+    assert_eq!(lines.next(), Some("seed=0"));
+    assert_eq!(lines.next(), Some("1 accepted order=1"));
+    assert_eq!(stdout.lines().count(), 1_000_001);
+    assert_eq!(
+        stdout.lines().last(),
+        Some("1000000 accepted order=1000000")
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

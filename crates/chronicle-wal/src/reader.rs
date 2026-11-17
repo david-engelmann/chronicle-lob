@@ -5,7 +5,13 @@
 //! first frame sets the base, and every later frame must carry
 //! exactly the previous sequence plus one. Recovery adds the
 //! snapshot seam check on top of this (section 10.4).
+//!
+//! The scan comes in three forms over the one decision table: a
+//! whole-slice scan ([`scan_log`]), a streaming scanner fed in
+//! chunks ([`LogScanner`]), and a reader-driven scan ([`scan_reader`])
+//! for logs too large to hold in memory (programme 2, lane S5).
 
+use std::io::Read;
 use std::path::Path;
 
 use crate::error::WalError;
@@ -83,15 +89,155 @@ pub fn scan_log(bytes: &[u8]) -> Result<ScanOutcome, WalError> {
     })
 }
 
-/// Read a log file and scan it.
+/// A streaming log scanner: the section 9.5 decision table applied
+/// incrementally to chunks of a log, for readers that do not hold
+/// the whole log in memory.
+///
+/// Feed chunks in order with [`LogScanner::feed`], which appends
+/// every frame the chunk completes to the caller's vector, then
+/// close the stream with [`LogScanner::finish`], which resolves
+/// the held tail and reports the discarded trailing byte count.
+/// The outcome is identical to [`scan_log`] over the concatenated
+/// bytes. The scanner holds back only the bytes of one undecided
+/// tail, a partial frame or a header fragment, because the crash
+/// boundary verdicts of section 9.5 are decidable only at the true
+/// end of the log. Corruption and sequence gap errors are decidable
+/// the moment their bytes arrive and surface from `feed` directly.
+#[derive(Clone, Debug, Default)]
+pub struct LogScanner {
+    pending: Vec<u8>,
+    base_offset: u64,
+    previous_seq: Option<u64>,
+}
+
+impl LogScanner {
+    /// A fresh scanner at the start of a log.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Feed one chunk of the log, appending every frame it
+    /// completes to `frames`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the scanning errors of [`scan_log`] for the bytes
+    /// seen so far: [`WalError::CorruptWalRecord`] at the first
+    /// corrupt frame and [`WalError::WalSequenceGap`] at the first
+    /// break in sequence consecutiveness.
+    pub fn feed(&mut self, chunk: &[u8], frames: &mut Vec<ScannedFrame>) -> Result<(), WalError> {
+        self.pending.extend_from_slice(chunk);
+        self.drain(frames, false)?;
+        Ok(())
+    }
+
+    /// Close the stream, resolving the held tail as the end of the
+    /// log. Appends any frame the tail completes to `frames` and
+    /// returns the discarded trailing byte count, which is zero for
+    /// a log that ends exactly on a frame boundary.
+    ///
+    /// # Errors
+    ///
+    /// Returns the scanning errors of [`scan_log`] for the held
+    /// tail.
+    pub fn finish(mut self, frames: &mut Vec<ScannedFrame>) -> Result<usize, WalError> {
+        self.drain(frames, true)
+    }
+
+    /// Walk the pending bytes, consuming every decidable frame into
+    /// `frames`. At the true end of the log (`end_of_log`), a crash
+    /// boundary verdict resolves the tail and its byte count is
+    /// returned; mid-stream it only pauses the walk.
+    fn drain(
+        &mut self,
+        frames: &mut Vec<ScannedFrame>,
+        end_of_log: bool,
+    ) -> Result<usize, WalError> {
+        let mut consumed = 0usize;
+        let mut discarded = 0usize;
+        loop {
+            let slice = &self.pending[consumed..];
+            if slice.is_empty() {
+                break;
+            }
+            let offset = self.base_offset + u64::try_from(consumed).unwrap_or(u64::MAX);
+            match crate::frame::parse_frame(slice, offset)? {
+                crate::frame::FrameParse::Frame {
+                    seq,
+                    command,
+                    frame_len,
+                } => {
+                    if let Some(previous) = self.previous_seq
+                        && previous.checked_add(1) != Some(seq)
+                    {
+                        return Err(WalError::WalSequenceGap {
+                            expected: previous.wrapping_add(1),
+                            found: seq,
+                            offset,
+                        });
+                    }
+                    self.previous_seq = Some(seq);
+                    frames.push(ScannedFrame {
+                        offset,
+                        seq,
+                        command,
+                    });
+                    consumed += frame_len;
+                }
+                crate::frame::FrameParse::CrashBoundary { discarded: tail } => {
+                    if end_of_log {
+                        discarded = tail;
+                        consumed += tail;
+                    }
+                    break;
+                }
+            }
+        }
+        self.pending.drain(..consumed);
+        self.base_offset += u64::try_from(consumed).unwrap_or(u64::MAX);
+        Ok(discarded)
+    }
+}
+
+/// Scan a log from any byte reader, in bounded memory: the input
+/// is consumed in fixed-size chunks through a [`LogScanner`], so
+/// only the decoded frames accumulate.
+///
+/// # Errors
+///
+/// Returns [`WalError::Io`] when the reader fails, and the scanning
+/// errors of [`scan_log`].
+pub fn scan_reader(mut reader: impl Read) -> Result<ScanOutcome, WalError> {
+    let mut scanner = LogScanner::new();
+    let mut frames = Vec::new();
+    let mut chunk = [0u8; 8192];
+    loop {
+        let read = reader
+            .read(&mut chunk)
+            .map_err(|e| WalError::io("read WAL stream", e))?;
+        if read == 0 {
+            break;
+        }
+        scanner.feed(&chunk[..read], &mut frames)?;
+    }
+    let discarded_trailing_bytes = scanner.finish(&mut frames)?;
+    Ok(ScanOutcome {
+        frames,
+        discarded_trailing_bytes,
+    })
+}
+
+/// Read a log file and scan it, streaming the file through
+/// [`scan_reader`] rather than holding it whole in memory.
 ///
 /// # Errors
 ///
 /// Returns [`WalError::Io`] when the file cannot be read, and the
 /// scanning errors of [`scan_log`].
 pub fn read_log(path: &Path) -> Result<ScanOutcome, WalError> {
-    let bytes = std::fs::read(path).map_err(|e| WalError::io("read WAL file", e))?;
-    scan_log(&bytes)
+    let file = std::fs::File::open(path).map_err(|e| WalError::io("read WAL file", e))?;
+    scan_reader(file)
 }
 
 #[cfg(test)]
@@ -314,5 +460,70 @@ mod tests {
         let outcome = scan_log(&[]).expect("empty log");
         assert_eq!(outcome.frames.len(), 0);
         assert_eq!(outcome.discarded_trailing_bytes, 0);
+    }
+
+    /// Drive a streaming scanner over `bytes` in chunks of
+    /// `chunk_len` and collect the outcome `scan_log` would shape.
+    fn streamed(bytes: &[u8], chunk_len: usize) -> Result<ScanOutcome, WalError> {
+        let mut scanner = LogScanner::new();
+        let mut frames = Vec::new();
+        for chunk in bytes.chunks(chunk_len.max(1)) {
+            scanner.feed(chunk, &mut frames)?;
+        }
+        let discarded_trailing_bytes = scanner.finish(&mut frames)?;
+        Ok(ScanOutcome {
+            frames,
+            discarded_trailing_bytes,
+        })
+    }
+
+    #[test]
+    fn streaming_scan_matches_scan_log_at_every_cut_and_chunking() {
+        // Lane S5: the streaming scanner is the whole-slice scan
+        // under chunking. Every truncation of the fixture log (so
+        // every torn shape the section 9.5 table decides) streams
+        // to exactly the scan_log outcome at chunk sizes that split
+        // headers, payloads, and frames at different phases.
+        let log = three_frame_log();
+        for cut in 0..=log.len() {
+            let expected = scan_log(&log[..cut]).expect("the slice scan is clean");
+            for chunk_len in [1_usize, 7, 31, 32, 33, 72, 184] {
+                let outcome = streamed(&log[..cut], chunk_len).unwrap_or_else(|e| {
+                    panic!("cut {cut} chunk {chunk_len} must scan clean, got {e}")
+                });
+                assert_eq!(outcome, expected, "cut {cut} chunk {chunk_len}");
+            }
+            let via_reader =
+                scan_reader(std::io::Cursor::new(&log[..cut])).expect("the reader scan is clean");
+            assert_eq!(via_reader, expected, "reader at cut {cut}");
+        }
+    }
+
+    #[test]
+    fn streaming_scan_surfaces_the_same_errors() {
+        // Corruption and sequence gaps surface from the streaming
+        // scanner with the same values the slice scan reports, at
+        // the feed that delivers the deciding bytes.
+        let mut damaged = log_of(&[(add(1), 1), (add(2), 2)]);
+        damaged[28] = damaged[28].wrapping_add(1);
+        let whole_err = scan_log(&damaged).expect_err("the slice scan convicts the checksum");
+        let mut scanner = LogScanner::new();
+        let mut frames = Vec::new();
+        let stream_err = scanner
+            .feed(&damaged, &mut frames)
+            .expect_err("the streaming scan convicts the checksum");
+        assert_eq!(stream_err.to_string(), whole_err.to_string());
+
+        let gap_log = log_of(&[(add(1), 1), (add(2), 3)]);
+        let whole_err = scan_log(&gap_log).expect_err("the slice scan convicts the gap");
+        let mut scanner = LogScanner::new();
+        let mut frames = Vec::new();
+        scanner
+            .feed(&gap_log[..72], &mut frames)
+            .expect("the first frame is clean");
+        let stream_err = scanner
+            .feed(&gap_log[72..], &mut frames)
+            .expect_err("the streaming scan convicts the gap");
+        assert_eq!(stream_err.to_string(), whole_err.to_string());
     }
 }
