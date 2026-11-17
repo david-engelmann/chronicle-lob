@@ -8,7 +8,9 @@
 //! loaded. Decoding validates in the order of section 10.4, with the
 //! checksum last, and no partial state escapes a failed load.
 
-use std::fs::{File, OpenOptions};
+#[cfg(unix)]
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 

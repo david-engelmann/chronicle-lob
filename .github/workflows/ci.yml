@@ -314,6 +314,7 @@ jobs:
   test-platforms:
     name: test (PR volume, macOS and Windows)
     strategy:
+      fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
@@ -340,6 +341,7 @@ jobs:
   examples-platforms:
     name: examples run with pinned output (macOS and Windows)
     strategy:
+      fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
