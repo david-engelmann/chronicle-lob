@@ -712,6 +712,18 @@ the whole disambiguation policy and the fault oracle tests exercise
 every row, including short fragments with single wrong bytes
 (INV-WAL-2).
 
+The scan also runs in streaming form (programme 2, lane S5).
+`LogScanner` applies the same table incrementally to chunks of a
+log, holding back only the bytes of one undecided tail, because the
+crash boundary rows are decidable only at the true end of the log;
+the corruption and sequence rows surface the moment their bytes
+arrive. `scan_reader` drives the scanner from any byte reader in
+bounded memory, and the CLI's verify and replay commands read
+through it, so the log a command can process is no longer bounded
+by memory. The streaming outcome is `scan_log`'s outcome over the
+same bytes, proven across every truncation of the fixture log at
+several chunk sizes (INV-WAL-2).
+
 ### 9.6 What the WAL does not store
 
 Rejected commands are not written: they changed nothing, and replaying

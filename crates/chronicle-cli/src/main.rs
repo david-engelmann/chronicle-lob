@@ -18,7 +18,7 @@ use chronicle_core::{
     Side, StpPolicy,
 };
 use chronicle_wal::{
-    ScannedFrame, WalError, load_snapshot, recover, save_snapshot, scan_log, snapshot_config,
+    ScannedFrame, WalError, load_snapshot, recover, save_snapshot, scan_reader, snapshot_config,
 };
 use clap::{Arg, ArgMatches, Command};
 
@@ -316,9 +316,9 @@ fn replay(sub: &ArgMatches) -> Result<(), String> {
         }
         None => (Book::new(inputs.config).map_err(|e| e.to_string())?, 0),
     };
-    let bytes = fs::read(&inputs.wal_path)
+    let file = fs::File::open(&inputs.wal_path)
         .map_err(|e| format!("cannot read log {}: {e}", inputs.wal_path.display()))?;
-    let outcome = scan_log(&bytes).map_err(|e| e.to_string())?;
+    let outcome = scan_reader(file).map_err(|e| e.to_string())?;
     if let Some(gap) = sequence_gap(&outcome.frames, base_seq) {
         return Err(gap.to_string());
     }
@@ -379,11 +379,11 @@ fn verify(sub: &ArgMatches) -> ExitCode {
     } else if let Err(e) = Book::new(config_from_flags(sub)) {
         return fail(&e.to_string());
     }
-    let bytes = match fs::read(&wal_path) {
-        Ok(bytes) => bytes,
+    let outcome = match fs::File::open(&wal_path) {
+        Ok(file) => scan_reader(file),
         Err(e) => return fail(&format!("cannot read log {}: {e}", wal_path.display())),
     };
-    match scan_log(&bytes) {
+    match outcome {
         Ok(outcome) => {
             if let Some(gap) = sequence_gap(&outcome.frames, base_seq) {
                 return corrupt(&gap);
