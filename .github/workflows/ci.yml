@@ -94,9 +94,15 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PROPTEST_CASES: "10000"
-      SIM_SEED: "10000"
     steps:
       - uses: actions/checkout@v4
+      # Programme 3 lane T3: the sweep seed rotates with the run
+      # number, so successive main runs explore new cases instead
+      # of re-proving one fixed stream forever. The test step
+      # echoes the seed in force, and any run reproduces locally
+      # with SIM_SEED set to the echoed value.
+      - name: Derive this run's seed
+        run: echo "SIM_SEED=$(( ${{ github.run_number }} + 10000 ))" >> "$GITHUB_ENV"
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Check workspace presence
@@ -117,9 +123,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PROPTEST_CASES: "10000"
-      SIM_SEED: "10001"
     steps:
       - uses: actions/checkout@v4
+      # Lane T3 rotation, offset from the first sweep's stream so
+      # the two sweeps never run the same seed in the same run.
+      - name: Derive this run's seed
+        run: echo "SIM_SEED=$(( ${{ github.run_number }} + 20000 ))" >> "$GITHUB_ENV"
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Check workspace presence

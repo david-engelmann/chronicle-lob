@@ -26,9 +26,23 @@ use chronicle_wal::{
     SyncPolicy, WalCommand, WalSink, WalWriter, decode_snapshot, encode_snapshot, recover, scan_log,
 };
 
-/// The one seed for the whole harness. The same seeded stream
+/// The default seed for the whole harness. The same seeded stream
 /// drives every surface, so a failure reproduces exactly.
 const SEED: u64 = 0xC0FF_EE15_600D_5EED;
+
+/// The seed in force for this run (programme 3, lane T3). The
+/// `CHRONICLE_MUTATION_SEED` environment variable overrides the
+/// default, and the deep workflow derives a fresh one from its
+/// run number on every dispatch, so successive deep runs explore
+/// new streams instead of re-proving the default one. The seed is
+/// printed in every panic message, so any failure reproduces by
+/// setting the variable to the printed value.
+fn harness_seed() -> u64 {
+    std::env::var("CHRONICLE_MUTATION_SEED")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(SEED)
+}
 
 /// Mutation cases per WAL surface. The deep workflow raises the
 /// standard volume through the environment; anything unreadable
@@ -251,7 +265,8 @@ fn run_surface(
     mut feed: impl FnMut(&[u8]) -> bool,
     mutate_fn: MutateFn,
 ) -> (usize, usize) {
-    let mut rng = SplitMix64::new(SEED);
+    let seed = harness_seed();
+    let mut rng = SplitMix64::new(seed);
     let mut valid = 0usize;
     let mut errors = 0usize;
     for i in 0..iterations {
@@ -269,7 +284,7 @@ fn run_surface(
                     .unwrap_or_else(|| "unknown panic".to_string());
                 panic!(
                     "decoder panicked: surface={surface} iteration={i} kind={kind} \
-                     offset={offset} seed={SEED}: {detail}"
+                     offset={offset} seed={seed}: {detail}"
                 );
             }
         }

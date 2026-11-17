@@ -10,6 +10,11 @@ name: deep mutation
 # standard CI run remains the per-change gate.
 on:
   workflow_dispatch:
+    inputs:
+      seed:
+        description: "Mutation seed (decimal u64). Empty derives one from the run number."
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -27,6 +32,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Programme 3 lane T3: the seed rotates per dispatch. An
+      # explicit seed input wins; otherwise the run number derives
+      # one, so successive deep runs explore new mutation streams.
+      # The seed in force is echoed here and printed in any panic
+      # message, so a failure reproduces by dispatching with it.
+      - name: Derive the mutation seed
+        run: |
+          SEED="${{ inputs.seed }}"
+          if [ -z "$SEED" ]; then SEED=$(( ${{ github.run_number }} + 70000 )); fi
+          echo "CHRONICLE_MUTATION_SEED=$SEED" >> "$GITHUB_ENV"
+          echo "mutation seed in force: $SEED"
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: cargo test --release -p chronicle-wal --test mutation --locked
