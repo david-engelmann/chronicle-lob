@@ -87,8 +87,8 @@ impl Crc32c {
     /// Feed one slice of input.
     pub fn update(&mut self, data: &[u8]) {
         let mut crc = self.state;
-        let mut chunks = data.chunks_exact(8);
-        for chunk in &mut chunks {
+        let (chunks, remainder) = data.as_chunks::<8>();
+        for chunk in chunks {
             let low = crc ^ u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
             let high = u32::from_le_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]);
             crc = TABLES[7][(low & 0xFF) as usize]
@@ -100,7 +100,7 @@ impl Crc32c {
                 ^ TABLES[1][((high >> 16) & 0xFF) as usize]
                 ^ TABLES[0][((high >> 24) & 0xFF) as usize];
         }
-        for &byte in chunks.remainder() {
+        for &byte in remainder {
             let index = ((crc ^ u32::from(byte)) & 0xFF) as usize;
             crc = TABLES[0][index] ^ (crc >> 8);
         }
