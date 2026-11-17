@@ -5,9 +5,12 @@ gated at main head 387200b1. Hosted CI is green on all eight jobs
 including the 10,000-case seed sweep, 112 tests pass, and the M4 gate
 re-audit closed the INVARIANTS enforcement census at 65 of 65.
 Programme 1 below (lanes R1 through R6) is complete: every lane
-landed and verified on main at 38733778, and the only open item is
-DC-1, the publish act, which waits on David's word. Programme 2
-follows the direction calls and is the current working plan.
+landed and verified on main at 38733778. DC-1, the publish act, was
+decided by David on 2026-11-16 and exercised the same day: all
+three crates are live on crates.io at 0.1.0 and verified firsthand
+from the registry, the docs builds, and a hosted stranger
+consumption run. Programme 2 follows the direction calls and is
+the current working plan.
 
 This roadmap is the working plan for everything after M4. Each lane is
 scoped, ordered, and carries the gate it must pass. Lanes land through
@@ -231,6 +234,14 @@ of the wal test suite after R4.
   ready and stops there. Nothing else in this roadmap depends on it.
   The crates.io token, when the time comes, is David's credential to
   supply through the secure flow.
+  Decided by David on 2026-11-16 and exercised the same day.
+  chronicle-core, chronicle-wal, and chronicle-lob-cli are published
+  at 0.1.0 in that order, each packaged by the hosted publish
+  workflow with its full verification build, and the publication is
+  verified from the registry API and index, the docs.rs builds for
+  the two library crates, and the verify-published workflow's
+  scratch consumer and cargo install runs. The publish and
+  verification workflows landed ahead of the act at dedb93b3.
 - DC-2, the CLI package name. Decided in-lane under the standing
   delegation, because the old name is taken and the fix is
   mechanical: the package becomes chronicle-lob-cli and the binary
@@ -246,8 +257,10 @@ Written on 2026-11-16 from a fresh audit of the finished build at
 main 38733778, seeded by the two instruments programme 1 built for
 exactly this purpose: the performance baseline in
 docs/PERFORMANCE.md and the mutation harness of lane R6. Publication
-stays out of scope while DC-1 is parked. Every other lane runs under
-the standing delegation, through the same staged route as before.
+was out of scope for this programme when it was written; DC-1 was
+decided and exercised while lane S1 ran, and the programme continues
+unchanged behind the publication. Every lane runs under the standing
+delegation, through the same staged route as before.
 
 ### Audit findings for programme 2
 
@@ -379,7 +392,8 @@ surfaces it tests have settled.
 
 ### Direction calls for programme 2
 
-None open. DC-1 remains parked exactly as programme 1 left it,
-and no lane in this programme depends on it. The Windows
-durability semantics in lane S4 are decided inside the lane and
-recorded in ARCHITECTURE.md, per the DC-3 rule.
+None open. DC-1 was decided by David on 2026-11-16 and exercised
+the same day, as recorded in the programme 1 direction calls, and
+no lane in this programme depends on it. The Windows durability
+semantics in lane S4 are decided inside the lane and recorded in
+ARCHITECTURE.md, per the DC-3 rule.
