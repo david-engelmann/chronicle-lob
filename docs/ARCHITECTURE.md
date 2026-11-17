@@ -1028,17 +1028,44 @@ docs/INVARIANTS.md is the normative mapping. Summary of the machinery:
 
 ## 14. CI gates
 
-.github/workflows/ci.yml implements: rustfmt check, clippy over the
-whole workspace with the lint posture of section 2.4, cargo test at PR
-volume, the 10,000 case seed sweep on main, rustdoc with
--D warnings, the bench compile check, and the zero-dependency check on
-chronicle-core. Programme 2 lane S4 added macOS and Windows legs for
-the test and examples gates at PR volume, so the supported platforms
-are exercised on every change; the remaining gates run on Ubuntu. At Milestone 0 the manifest does not exist yet and each
-cargo job reports that plainly and passes; from Milestone 1 the guards
-are inert and the gates run at full strength. The merge verdict for this
-program is hosted CI green on the exact head plus the milestone gate
-sign-off from Main Muse.
+The CI workflow (.github/workflows/ci.yml) runs fifteen jobs. On
+every change it runs the rustfmt check, clippy over the whole
+workspace with the lint posture of section 2.4, cargo test at PR
+volume (1,000 property cases under a fixed seed), rustdoc with
+-D warnings, the bench compile check, the zero-dependency check
+on chronicle-core, the determinism gate, the package job (a full
+cargo package verification build of chronicle-core plus file
+listings for the other two packages), and the examples job,
+which runs both worked examples and diffs their output against
+the pinned text. The test and examples gates also run on macOS
+and Windows at PR volume (programme 2, lane S4), so the
+supported platforms are exercised on every change. The
+remaining gates run on Ubuntu.
+
+On main pushes only, two seed sweeps run the full suite at
+10,000 property cases. Their SIM_SEED values rotate with the
+workflow run number (programme 3, lane T3), so successive main
+runs explore new cases instead of re-proving one fixed stream.
+Each sweep echoes the seed in force, and any run reproduces
+locally with that seed.
+
+Four dispatch-only workflows stand beside CI. bench.yml runs
+the criterion suite and uploads the results that feed
+docs/PERFORMANCE.md. publish.yml packages one crate with a full
+verification build for a crates.io release.
+verify-published.yml proves the published crates work from a
+stranger's machine. mutation-deep.yml runs the decoder mutation
+harness at one hundred thousand cases per surface under a
+rotating seed.
+
+One operational note. The macOS test leg is occasionally
+cancelled by the runner infrastructure under load, five times
+on 2026-11-17 alone. When the leg runs it passes in minutes, so
+a cancelled leg is re-dispatched rather than treated as a code
+failure, and a landing waits for the re-run to go green.
+
+The merge verdict is hosted CI green on the exact head, with
+the merged tree verified identical to that head.
 
 ## 15. Milestone map
 
