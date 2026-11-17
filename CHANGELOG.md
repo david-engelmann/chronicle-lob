@@ -5,10 +5,12 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
-The 0.1.0 candidate. The four-milestone build is complete and
-gated, and publication readiness (roadmap lane R1 in
-docs/ROADMAP.md) is in progress. The publish itself waits on the
-direction call recorded as DC-1 in docs/ROADMAP.md.
+## [0.1.0] - 2026-11-16
+
+The first public release. The four-milestone build is complete and
+gated, and all three crates are published on crates.io at 0.1.0
+and verified from the registry, the docs builds, and a hosted
+scratch consumer built against the published packages.
 
 ### Added
 
