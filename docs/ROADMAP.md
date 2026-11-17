@@ -397,3 +397,69 @@ the same day, as recorded in the programme 1 direction calls, and
 no lane in this programme depends on it. The Windows durability
 semantics in lane S4 are decided inside the lane and recorded in
 ARCHITECTURE.md, per the DC-3 rule.
+
+## Programme 3: the C set (opened 2026-11-17)
+
+A fresh end-to-end audit of the repo as it stood at the close of
+programme 2 (main 72f655a1) produced seven findings, C-1 to C-7.
+Main Muse reviewed and approved the list and the lane order on
+2026-11-17, with T6 folded into T4. The audit text is held by the
+chronicle-lob seat; the findings in brief:
+
+- C-1: recovery is still whole-file. The scan streams since S5,
+  but recover() consumes a byte slice, recover_from_files reads
+  the whole log, and the CLI snapshot command does the same.
+- C-2: the changelog Unreleased section stood empty and the
+  version still read 0.1.0 after two programmes of landed work.
+- C-3: exploration seeds never rotate. The sweeps run SIM_SEED
+  10000 and 10001 on every main push and the mutation harness
+  seed is a compile-time constant, so CI re-proves the same
+  cases forever.
+- C-4: ARCHITECTURE.md section 14 no longer describes the CI
+  that exists.
+- C-5: the macOS test leg is cancelled runner-side under fleet
+  load, repeatedly (five instances on 2026-11-17 alone), and the
+  remedy is a manual re-dispatch today.
+- C-6: no checkpoint workflow ties snapshots to the WAL, so a
+  long-running deployment's log grows without a supported bound.
+- C-7: the README says nothing about platform support or
+  streaming reads, the two headline programme 2 capabilities.
+
+### Lane T1: streaming recovery (C-1)
+
+recover_from_reader applies frames as the scanner produces
+them; recover_from_files and the CLI snapshot command read
+through it. Landed at afce63d4 (PR #25).
+
+### Lane T2: release record and 0.2.0 readiness (C-2)
+
+Backfill the changelog for programmes 2 and 3, bump every
+manifest and the lock file to 0.2.0, and raise DC-4. Standing
+rule from this lane on: every landing lane adds its changelog
+entry in the same commit.
+
+### Lane T3: seed rotation (C-3)
+
+The sweeps and the mutation harness take a seed that rotates on
+a stated cadence and is printed in every run; the deep workflow
+gains a seed input.
+
+### Lane T4: documentation currency, with T6 folded in (C-4, C-7, C-5)
+
+Section 14 rewritten to the real gate map including all four
+workflows; the README gains the platform and streaming
+statements; the macOS leg's standing remedy is recorded, or a
+workflow-level retry replaces it.
+
+### Lane T5: checkpoint story (C-6)
+
+Design first: a short decision record on the snapshot and
+fresh-log loop, then the minimal library and CLI support the
+record argues for.
+
+### Direction calls for programme 3
+
+- DC-4, the 0.2.0 publish. OPEN, and it is David's call, as the
+  0.1.0 publish was under DC-1. The readiness work (changelog,
+  version bump) proceeds without it; the publish runs only on
+  his word.

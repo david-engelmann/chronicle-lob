@@ -4,7 +4,7 @@
 # binary below keeps the name chronicle-cli, so installed usage does
 # not change.
 name = "chronicle-lob-cli"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.100"
 description = "Command line replay, verification, snapshot, and benchmark tool for chronicle books"
@@ -18,8 +18,8 @@ name = "chronicle-cli"
 path = "src/main.rs"
 
 [dependencies]
-chronicle-core = { version = "0.1.0", path = "../chronicle-core" }
-chronicle-wal = { version = "0.1.0", path = "../chronicle-wal" }
+chronicle-core = { version = "0.2.0", path = "../chronicle-core" }
+chronicle-wal = { version = "0.2.0", path = "../chronicle-wal" }
 clap = { version = "4", features = ["env"] }
 serde_json = "1"
 
