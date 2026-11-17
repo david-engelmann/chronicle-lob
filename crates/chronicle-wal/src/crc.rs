@@ -174,7 +174,7 @@ mod tests {
         !crc
     }
 
-    /// SplitMix64, the same deterministic generator the mutation
+    /// `SplitMix64`, the same deterministic generator the mutation
     /// harness uses, so the test data needs no external source.
     fn split_mix64(state: &mut u64) -> u64 {
         *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
@@ -211,7 +211,7 @@ mod tests {
         let mut state = 0xC0FF_EE15_600D_5EED_u64;
         let mut data = vec![0u8; 517];
         for byte in &mut data {
-            *byte = split_mix64(&mut state) as u8;
+            *byte = split_mix64(&mut state).to_le_bytes()[0];
         }
         for len in 0..=data.len() {
             let slice = &data[..len];
