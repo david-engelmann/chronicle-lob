@@ -1,7 +1,10 @@
 //! INV-LAT-1 (ARCHITECTURE.md section 13): add, cancel, and
 //! best-price latency on a book at realistic occupancy, 12,000 live
-//! orders across 240 active levels. Throughput is one element per
-//! operation.
+//! orders across 240 active levels. Throughput is counted per
+//! operation. Add and cancel are measured as streams of 1,000
+//! operations on one pre-built occupied book (programme 2, lane
+//! S1): the first baseline's single-operation batches rebuilt the
+//! book per batch and charged the setup to the operation.
 
 #![forbid(unsafe_code)]
 #![allow(
@@ -68,55 +71,75 @@ fn occupied_book() -> (Book, Vec<ExecutionEvent>) {
     (book, storage)
 }
 
+/// Operations per measured stream (lane S1).
+const STREAM: u64 = 1_000;
+
+/// First id of the stream window. The occupied book uses ids up to
+/// 12,000 and its capacity is 32,768, so the window always fits
+/// and never collides.
+const STREAM_FIRST_ID: u64 = 20_000;
+
+/// Add the stream's 1,000 resting bids to `book`, spread across
+/// the occupied bid levels so the stream touches the same level
+/// machinery a mixed flow would.
+fn add_stream(book: &mut Book, storage: &mut Vec<ExecutionEvent>) {
+    for i in 0..STREAM {
+        let mut events = EventBuffer::new(&mut *storage);
+        book.add_order(
+            OrderId(STREAM_FIRST_ID + i),
+            ParticipantId(1),
+            Side::Bid,
+            OrderType::Limit,
+            100 + (i % 120),
+            5,
+            None,
+            &mut events,
+        )
+        .expect("stream add rests");
+        storage.clear();
+    }
+}
+
+/// The occupied book with the stream's orders resting in it, as
+/// the cancel bench's setup.
+fn occupied_book_with_targets() -> (Book, Vec<ExecutionEvent>) {
+    let (mut book, mut storage) = occupied_book();
+    add_stream(&mut book, &mut storage);
+    (book, storage)
+}
+
 fn bench_add_cancel_best(c: &mut Criterion) {
     let mut group = c.benchmark_group("add_cancel_best");
-    group.throughput(Throughput::Elements(1));
+    group.throughput(Throughput::Elements(STREAM));
     group.bench_function("add_resting", |b| {
         b.iter_batched(
             occupied_book,
             |(mut book, mut storage)| {
-                let mut events = EventBuffer::new(&mut storage);
-                black_box(book.add_order(
-                    OrderId(900_001),
-                    ParticipantId(1),
-                    Side::Bid,
-                    OrderType::Limit,
-                    219,
-                    5,
-                    None,
-                    &mut events,
-                ))
+                add_stream(&mut book, &mut storage);
+                (book, storage)
             },
-            BatchSize::SmallInput,
+            BatchSize::LargeInput,
         );
     });
     group.bench_function("cancel", |b| {
         b.iter_batched(
-            || {
-                let (mut book, mut storage) = occupied_book();
-                let mut events = EventBuffer::new(&mut storage);
-                book.add_order(
-                    OrderId(900_001),
-                    ParticipantId(1),
-                    Side::Bid,
-                    OrderType::Limit,
-                    219,
-                    5,
-                    None,
-                    &mut events,
-                )
-                .expect("setup add rests");
-                storage.clear();
+            occupied_book_with_targets,
+            |(mut book, mut storage)| {
+                for i in 0..STREAM {
+                    let mut events = EventBuffer::new(&mut storage);
+                    black_box(book.cancel_order(OrderId(STREAM_FIRST_ID + i), &mut events));
+                    storage.clear();
+                }
                 (book, storage)
             },
-            |(mut book, mut storage)| {
-                let mut events = EventBuffer::new(&mut storage);
-                black_box(book.cancel_order(OrderId(900_001), &mut events))
-            },
-            BatchSize::SmallInput,
+            BatchSize::LargeInput,
         );
     });
+    group.finish();
+
     let (book, _storage) = occupied_book();
+    let mut group = c.benchmark_group("best_bid_ask");
+    group.throughput(Throughput::Elements(1));
     group.bench_function("best_bid_ask", |b| {
         b.iter(|| black_box((book.best_bid(), book.best_ask())));
     });
