@@ -71,6 +71,31 @@ variance of shared hosted runners and the reason this file
 compares like with like and treats single runs as readings, not
 verdicts.
 
+## Programme 2 coverage pass of 2026-11-17 (lane S2)
+
+Source: benchmarks workflow run 44148139727, dispatched manually
+against main at commit 4bf3ffc0, executed on a GitHub-hosted
+ubuntu-latest runner. This pass records the three benchmarks
+lane S2 of docs/ROADMAP.md added to close finding B-3. Figures
+are criterion's point estimates with the confidence range in
+brackets, per operation where the benchmark counts operations;
+the snapshot row reports the mean because criterion produced no
+slope fit for that series.
+
+| Benchmark | Workload | Time | Throughput |
+| --- | --- | --- | --- |
+| amend/amend_resting | Stream of 1,000 price-and-quantity amends against resting orders on the 12,000-order occupied book, per amend | 18.45 ns [18.39, 18.52] | 54.19 million ops/s |
+| mass_cancel/cancel_by_participant | One cancel_by_participant call removing one participant's 800 resting orders from the 12,000-order occupied book, per cancelled order | 52.82 ns [51.93, 54.03] | 18.93 million orders/s |
+| snapshot/encode_decode_round_trip | One encode and decode round trip of a snapshot state holding 12,000 live orders (947,012 encoded bytes), per round trip | 3.89 ms [3.87, 3.93] | 232.08 MiB/s |
+
+The amend stream amends each target order once, moving its price
+60 levels inside the bid band and raising its quantity, so every
+amend takes the level-move path and none crosses the spread. The
+mass cancel figure is per cancelled order over a single call;
+the call as a whole measured 42.25 µs. The snapshot round trip
+is the first measurement of the snapshot codec's cost at this
+occupancy and stands as its baseline for later comparison.
+
 ## Refreshing the baseline
 
 Dispatch the benchmarks workflow (.github/workflows/bench.yml)
