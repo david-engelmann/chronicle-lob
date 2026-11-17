@@ -96,6 +96,19 @@ the call as a whole measured 42.25 µs. The snapshot round trip
 is the first measurement of the snapshot codec's cost at this
 occupancy and stands as its baseline for later comparison.
 
+## Programme 2 CRC pass of 2026-11-17 (lane S3)
+
+Source: benchmarks workflow run 44153859460 against main at dcf5e176 on a GitHub-hosted ubuntu-latest runner. Lane S3 replaced the byte-at-a-time CRC32C update in chronicle-wal with slicing-by-8, and the gate for the lane was a before and after reading of the two surfaces that run the checksum over every byte. The before readings are the lane S2 pass figures above, from run 44148139727 on the same runner class.
+
+| Benchmark | Before | After |
+| --- | --- | --- |
+| wal_append, per frame | 91.74 ns | 57.33 ns [57.31, 57.35] |
+| wal_append throughput | 748.50 MiB/s | 1,197.73 MiB/s |
+| recovery of 5,000 frames | 687.99 µs | 545.66 µs [544.10, 547.48] |
+| recovery throughput | 499.02 MiB/s | 629.19 MiB/s |
+
+The append surface runs at 1.60 times its former throughput and the recovery surface at 1.26 times. Checksum values are unchanged. A differential test in the crc module proves the slicing implementation against a bit-at-a-time reference written straight from the polynomial at every input length from 0 to 517 and across six streaming split sizes, and the golden check value and the stored fixtures across the suite stand unmodified.
+
 ## Refreshing the baseline
 
 Dispatch the benchmarks workflow (.github/workflows/bench.yml)
