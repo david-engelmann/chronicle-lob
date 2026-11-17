@@ -40,5 +40,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: crate-${{ inputs.crate }}
-          path: target/package/${{ inputs.crate }}-0.1.0.crate
+          # The glob keeps the workflow version-agnostic: the
+          # 0.1.0 literal it replaced failed the 0.2.0 packaging
+          # run when the packaged file carried the new version.
+          path: target/package/${{ inputs.crate }}-*.crate
           if-no-files-found: error
