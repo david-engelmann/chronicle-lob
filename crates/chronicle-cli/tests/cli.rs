@@ -539,6 +539,8 @@ fn verify_and_replay_stream_a_million_frame_log() {
         "replay",
         "--wal",
         wal.to_str().unwrap(),
+        "--seed",
+        "0",
         "--max-orders",
         "1000000",
         "--grid-len",
@@ -554,6 +556,9 @@ fn verify_and_replay_stream_a_million_frame_log() {
     assert_eq!(lines.next(), Some("seed=0"));
     assert_eq!(lines.next(), Some("1 accepted order=1"));
     assert_eq!(stdout.lines().count(), 1_000_001);
-    assert_eq!(stdout.lines().last(), Some("1000000 accepted order=1000000"));
+    assert_eq!(
+        stdout.lines().last(),
+        Some("1000000 accepted order=1000000")
+    );
     let _ = fs::remove_dir_all(&dir);
 }

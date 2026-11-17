@@ -149,7 +149,11 @@ impl LogScanner {
     /// `frames`. At the true end of the log (`end_of_log`), a crash
     /// boundary verdict resolves the tail and its byte count is
     /// returned; mid-stream it only pauses the walk.
-    fn drain(&mut self, frames: &mut Vec<ScannedFrame>, end_of_log: bool) -> Result<usize, WalError> {
+    fn drain(
+        &mut self,
+        frames: &mut Vec<ScannedFrame>,
+        end_of_log: bool,
+    ) -> Result<usize, WalError> {
         let mut consumed = 0usize;
         let mut discarded = 0usize;
         loop {
@@ -484,12 +488,13 @@ mod tests {
         for cut in 0..=log.len() {
             let expected = scan_log(&log[..cut]).expect("the slice scan is clean");
             for chunk_len in [1_usize, 7, 31, 32, 33, 72, 184] {
-                let outcome = streamed(&log[..cut], chunk_len)
-                    .unwrap_or_else(|e| panic!("cut {cut} chunk {chunk_len} must scan clean, got {e}"));
+                let outcome = streamed(&log[..cut], chunk_len).unwrap_or_else(|e| {
+                    panic!("cut {cut} chunk {chunk_len} must scan clean, got {e}")
+                });
                 assert_eq!(outcome, expected, "cut {cut} chunk {chunk_len}");
             }
-            let via_reader = scan_reader(std::io::Cursor::new(&log[..cut]))
-                .expect("the reader scan is clean");
+            let via_reader =
+                scan_reader(std::io::Cursor::new(&log[..cut])).expect("the reader scan is clean");
             assert_eq!(via_reader, expected, "reader at cut {cut}");
         }
     }
