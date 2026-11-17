@@ -109,42 +109,46 @@ fn occupied_book_with_targets() -> (Book, Vec<ExecutionEvent>) {
 }
 
 fn bench_add_cancel_best(c: &mut Criterion) {
-    let mut group = c.benchmark_group("add_cancel_best");
-    group.throughput(Throughput::Elements(STREAM));
-    group.bench_function("add_resting", |b| {
-        b.iter_batched(
-            occupied_book,
-            |(mut book, mut storage)| {
-                add_stream(&mut book, &mut storage);
-                (book, storage)
-            },
-            BatchSize::LargeInput,
-        );
-    });
-    group.bench_function("cancel", |b| {
-        b.iter_batched(
-            occupied_book_with_targets,
-            |(mut book, mut storage)| {
-                for i in 0..STREAM {
-                    let mut events = EventBuffer::new(&mut storage);
-                    book.cancel_order(OrderId(STREAM_FIRST_ID + i), &mut events)
-                        .expect("stream cancel removes its target");
-                    storage.clear();
-                }
-                (book, storage)
-            },
-            BatchSize::LargeInput,
-        );
-    });
-    group.finish();
+    {
+        let mut group = c.benchmark_group("add_cancel_best");
+        group.throughput(Throughput::Elements(STREAM));
+        group.bench_function("add_resting", |b| {
+            b.iter_batched(
+                occupied_book,
+                |(mut book, mut storage)| {
+                    add_stream(&mut book, &mut storage);
+                    (book, storage)
+                },
+                BatchSize::LargeInput,
+            );
+        });
+        group.bench_function("cancel", |b| {
+            b.iter_batched(
+                occupied_book_with_targets,
+                |(mut book, mut storage)| {
+                    for i in 0..STREAM {
+                        let mut events = EventBuffer::new(&mut storage);
+                        book.cancel_order(OrderId(STREAM_FIRST_ID + i), &mut events)
+                            .expect("stream cancel removes its target");
+                        storage.clear();
+                    }
+                    (book, storage)
+                },
+                BatchSize::LargeInput,
+            );
+        });
+        group.finish();
+    }
 
     let (book, _storage) = occupied_book();
-    let mut group = c.benchmark_group("best_bid_ask");
-    group.throughput(Throughput::Elements(1));
-    group.bench_function("best_bid_ask", |b| {
-        b.iter(|| black_box((book.best_bid(), book.best_ask())));
-    });
-    group.finish();
+    {
+        let mut group = c.benchmark_group("best_bid_ask");
+        group.throughput(Throughput::Elements(1));
+        group.bench_function("best_bid_ask", |b| {
+            b.iter(|| black_box((book.best_bid(), book.best_ask())));
+        });
+        group.finish();
+    }
 }
 
 criterion_group!(benches, bench_add_cancel_best);
