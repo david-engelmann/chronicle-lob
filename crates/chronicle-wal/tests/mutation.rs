@@ -6,6 +6,15 @@
 //! point fails the harness with the mutation's full coordinates,
 //! and a panic found this way is a blocker whose minimised input
 //! becomes a regression case, per the roadmap.
+//!
+//! Programme 2 lane S6 adds multi-point mutations at the same
+//! standard volumes (two value changes at distinct offsets, or a
+//! value change paired with a truncation) and a dispatch-only deep
+//! workflow (.github/workflows/mutation-deep.yml) that raises the
+//! volume through the `CHRONICLE_MUTATION_CASES` environment
+//! variable: the standard run uses 3,000 cases per WAL surface and
+//! 1,500 per snapshot surface, and the deep run uses 100,000 and
+//! 50,000.
 
 use std::io;
 
@@ -20,6 +29,21 @@ use chronicle_wal::{
 /// The one seed for the whole harness. The same seeded stream
 /// drives every surface, so a failure reproduces exactly.
 const SEED: u64 = 0xC0FF_EE15_600D_5EED;
+
+/// Mutation cases per WAL surface. The deep workflow raises the
+/// standard volume through the environment; anything unreadable
+/// falls back to the standard count.
+fn wal_cases() -> usize {
+    std::env::var("CHRONICLE_MUTATION_CASES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(3_000)
+}
+
+/// Mutation cases per snapshot surface, half the WAL volume.
+fn snapshot_cases() -> usize {
+    wal_cases() / 2
+}
 
 const fn config() -> BookConfig {
     BookConfig {
@@ -167,6 +191,56 @@ fn mutate(base: &[u8], rng: &mut SplitMix64, kind: usize) -> (Vec<u8>, usize) {
     (bytes, offset)
 }
 
+/// One mutation step: base bytes, generator, and kind in,
+/// mutated bytes and centre offset out.
+type MutateFn = fn(&[u8], &mut SplitMix64, usize) -> (Vec<u8>, usize);
+
+/// Apply a multi-point mutation (lane S6): two value changes at
+/// distinct offsets, or a value change paired with a truncation,
+/// in a fixed rotation by kind (0 two bit flips, 1 two byte
+/// overwrites, 2 a flip and an overwrite, 3 a flip and a
+/// truncation). Returns the mutated bytes with the first offset.
+fn mutate_multi(base: &[u8], rng: &mut SplitMix64, kind: usize) -> (Vec<u8>, usize) {
+    const fn flip(bytes: &mut [u8], rng: &mut SplitMix64, offset: usize) {
+        bytes[offset] ^= 1u8 << (rng.next_u64() % 8);
+    }
+    fn overwrite(bytes: &mut [u8], rng: &mut SplitMix64, offset: usize) {
+        bytes[offset] = rng.byte();
+    }
+    fn distinct_offset(rng: &mut SplitMix64, len: usize, first: usize) -> usize {
+        let mut other = rng.below(len);
+        while other == first {
+            other = rng.below(len);
+        }
+        other
+    }
+    let mut bytes = base.to_vec();
+    let first = rng.below(base.len());
+    match kind {
+        0 => {
+            flip(&mut bytes, rng, first);
+            let second = distinct_offset(rng, base.len(), first);
+            flip(&mut bytes, rng, second);
+        }
+        1 => {
+            overwrite(&mut bytes, rng, first);
+            let second = distinct_offset(rng, base.len(), first);
+            overwrite(&mut bytes, rng, second);
+        }
+        2 => {
+            flip(&mut bytes, rng, first);
+            let second = distinct_offset(rng, base.len(), first);
+            overwrite(&mut bytes, rng, second);
+        }
+        _ => {
+            flip(&mut bytes, rng, first);
+            let cut = rng.below(base.len());
+            bytes.truncate(cut.max(1));
+        }
+    }
+    (bytes, first)
+}
+
 /// Feed `iterations` seeded mutations of `base` to one decoder
 /// surface, which reports true for a valid decode and false for a
 /// typed error. Returns the (valid, error) outcome counts.
@@ -175,13 +249,14 @@ fn run_surface(
     iterations: usize,
     surface: &str,
     mut feed: impl FnMut(&[u8]) -> bool,
+    mutate_fn: MutateFn,
 ) -> (usize, usize) {
     let mut rng = SplitMix64::new(SEED);
     let mut valid = 0usize;
     let mut errors = 0usize;
     for i in 0..iterations {
         let kind = i % 4;
-        let (bytes, offset) = mutate(base, &mut rng, kind);
+        let (bytes, offset) = mutate_fn(base, &mut rng, kind);
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| feed(&bytes)));
         match outcome {
             Ok(true) => valid += 1,
@@ -204,29 +279,95 @@ fn run_surface(
 
 #[test]
 fn mutation_harness_wal_never_panics() {
-    // INV-WAL-7: 3,000 seeded mutations of a valid log against
-    // both WAL surfaces. Truncations recover the prefix, so valid
-    // outcomes must occur alongside typed errors.
+    // INV-WAL-7: seeded mutations of a valid log against both WAL
+    // surfaces, 3,000 at the standard volume. Truncations recover
+    // the prefix, so valid outcomes must occur alongside typed
+    // errors.
     let (wal, _snapshot) = fixture_bytes();
-    let (valid, errors) = run_surface(&wal, 3_000, "scan_log", |b| scan_log(b).is_ok());
+    let (valid, errors) = run_surface(
+        &wal,
+        wal_cases(),
+        "scan_log",
+        |b| scan_log(b).is_ok(),
+        mutate,
+    );
     assert!(valid > 0, "truncations must decode as clean prefixes");
     assert!(errors > 0, "corruptions must end in typed errors");
-    let (valid, errors) = run_surface(&wal, 3_000, "recover", |b| {
-        recover(config(), None, b).is_ok()
-    });
+    let (valid, errors) = run_surface(
+        &wal,
+        wal_cases(),
+        "recover",
+        |b| recover(config(), None, b).is_ok(),
+        mutate,
+    );
     assert!(valid > 0, "truncations must recover their prefix");
     assert!(errors > 0, "corruptions must end in typed errors");
 }
 
 #[test]
 fn mutation_harness_snapshot_never_panics() {
-    // INV-WAL-7: 1,500 seeded mutations of a valid snapshot
-    // against the decoder. Any real change breaks a header check
-    // or the CRC, so typed errors must occur; the point of the
-    // harness is that nothing panics on the way there.
+    // INV-WAL-7: seeded mutations of a valid snapshot against the
+    // decoder, 1,500 at the standard volume. Any real change
+    // breaks a header check or the CRC, so typed errors must
+    // occur; the point of the harness is that nothing panics on
+    // the way there.
     let (_wal, snapshot) = fixture_bytes();
-    let (_valid, errors) = run_surface(&snapshot, 1_500, "decode_snapshot", |b| {
-        decode_snapshot(b, &config()).is_ok()
-    });
+    let (_valid, errors) = run_surface(
+        &snapshot,
+        snapshot_cases(),
+        "decode_snapshot",
+        |b| decode_snapshot(b, &config()).is_ok(),
+        mutate,
+    );
+    assert!(errors > 0, "mutations must end in typed errors");
+}
+
+#[test]
+fn mutation_harness_wal_multi_point_never_panics() {
+    // INV-WAL-7, lane S6: multi-point mutations of a valid log at
+    // the same standard volume. The flip-and-truncate kind leaves
+    // a clean prefix whenever the cut lands before the flip, so
+    // valid outcomes must occur alongside typed errors.
+    let (wal, _snapshot) = fixture_bytes();
+    let (valid, errors) = run_surface(
+        &wal,
+        wal_cases(),
+        "scan_log multi-point",
+        |b| scan_log(b).is_ok(),
+        mutate_multi,
+    );
+    assert!(
+        valid > 0,
+        "flip-and-truncate cases must decode as clean prefixes"
+    );
+    assert!(errors > 0, "corruptions must end in typed errors");
+    let (valid, errors) = run_surface(
+        &wal,
+        wal_cases(),
+        "recover multi-point",
+        |b| recover(config(), None, b).is_ok(),
+        mutate_multi,
+    );
+    assert!(
+        valid > 0,
+        "flip-and-truncate cases must recover their prefix"
+    );
+    assert!(errors > 0, "corruptions must end in typed errors");
+}
+
+#[test]
+fn mutation_harness_snapshot_multi_point_never_panics() {
+    // INV-WAL-7, lane S6: multi-point mutations of a valid
+    // snapshot at the standard volume. Two changed points break a
+    // header check or the CRC at least as surely as one, so typed
+    // errors must occur and nothing may panic on the way there.
+    let (_wal, snapshot) = fixture_bytes();
+    let (_valid, errors) = run_surface(
+        &snapshot,
+        snapshot_cases(),
+        "decode_snapshot multi-point",
+        |b| decode_snapshot(b, &config()).is_ok(),
+        mutate_multi,
+    );
     assert!(errors > 0, "mutations must end in typed errors");
 }
