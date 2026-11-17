@@ -1,6 +1,6 @@
 [package]
 name = "chronicle-wal"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.100"
 description = "CRC32C write-ahead log and atomic snapshots for chronicle order books"
@@ -10,7 +10,7 @@ categories = ["data-structures", "filesystem"]
 repository = "https://github.com/david-engelmann/chronicle-lob"
 
 [dependencies]
-chronicle-core = { version = "0.1.0", path = "../chronicle-core" }
+chronicle-core = { version = "0.2.0", path = "../chronicle-core" }
 
 [dev-dependencies]
 proptest = "1"

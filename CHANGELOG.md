@@ -5,6 +5,46 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+Prepared for 0.2.0. The version bump has landed in every manifest
+and the lock file, and this section is the release record. The
+publish itself waits on direction call DC-4 in docs/ROADMAP.md.
+
+### Added
+
+- Streaming reads in chronicle-wal. LogScanner applies the frame
+  decision table incrementally to chunks of bytes, scan_reader
+  drives it from any byte reader in bounded memory, and the CLI
+  verify and replay commands read through it (programme 2, lane
+  S5).
+- Streaming recovery. recover_from_reader applies frames as the
+  scanner produces them, recover_from_files and the CLI snapshot
+  command read through it, and the recovered result is proven
+  identical to the slice form (programme 3, lane T1).
+- Benchmarks for amend, mass cancel by participant, and the
+  snapshot encode and decode round trip, each with its own
+  invariant row (programme 2, lane S2).
+- macOS and Windows CI legs for the test and examples gates at
+  pull request volume, so the supported platforms are exercised
+  on every change (programme 2, lane S4).
+- Multi-point mutations in the decoder harness and a
+  dispatch-only deep mutation workflow that runs one hundred
+  thousand cases per surface (programme 2, lane S6).
+
+### Changed
+
+- The CRC32C checksum now consumes eight bytes per step through
+  slicing-by-8 tables built at compile time. WAL append runs at
+  1.60 times its former throughput and recovery at 1.26 times,
+  with checksum values proven unchanged against a bit-at-a-time
+  reference (programme 2, lane S3).
+- The add and cancel benchmarks now measure streams of one
+  thousand operations per iteration on a pre-built occupied book,
+  replacing figures that measured the harness itself (programme
+  2, lane S1).
+- Snapshot saving on non-Unix platforms is a defined no-op for
+  the directory sync step, with the durability semantics stated
+  in the architecture document (programme 2, lane S4).
+
 ## [0.1.0] - 2026-11-16
 
 The first public release. The four-milestone build is complete and
