@@ -17,9 +17,9 @@
 //! 50,000.
 //!
 //! Programme 4 lane U1 points the same stream at the streaming
-//! surfaces the CLI actually runs (LogScanner, scan_reader, and
-//! recover_from_reader) as pairs against their slice forms: on
-//! every mutation the streaming verdict and outcome must equal
+//! surfaces the CLI actually runs (`LogScanner`, `scan_reader`,
+//! and `recover_from_reader`) as pairs against their slice forms:
+//! on every mutation the streaming verdict and outcome must equal
 //! the slice form exactly, scan errors included.
 
 use std::io;
@@ -284,7 +284,7 @@ fn run_surface(
             Ok(true) => valid += 1,
             Ok(false) => errors += 1,
             Err(payload) => {
-                let detail = panic_detail(&payload);
+                let detail = panic_detail(&*payload);
                 panic!(
                     "decoder panicked: surface={surface} iteration={i} kind={kind} \
                      offset={offset} seed={seed}: {detail}"
@@ -397,7 +397,7 @@ fn run_streaming_pair<T: PartialEq>(
                 );
             }
             Err(payload) => {
-                let detail = panic_detail(&payload);
+                let detail = panic_detail(&*payload);
                 panic!(
                     "decoder panicked: surface={surface} iteration={i} kind={kind} \
                      offset={offset} seed={seed}: {detail}"
