@@ -15,6 +15,12 @@
 //! variable: the standard run uses 3,000 cases per WAL surface and
 //! 1,500 per snapshot surface, and the deep run uses 100,000 and
 //! 50,000.
+//!
+//! Programme 4 lane U1 points the same stream at the streaming
+//! surfaces the CLI actually runs (LogScanner, scan_reader, and
+//! recover_from_reader) as pairs against their slice forms: on
+//! every mutation the streaming verdict and outcome must equal
+//! the slice form exactly, scan errors included.
 
 use std::io;
 
@@ -23,7 +29,8 @@ use chronicle_core::{
     StpPolicy,
 };
 use chronicle_wal::{
-    SyncPolicy, WalCommand, WalSink, WalWriter, decode_snapshot, encode_snapshot, recover, scan_log,
+    LogScanner, Recovery, ScanOutcome, SyncPolicy, WalCommand, WalError, WalSink, WalWriter,
+    decode_snapshot, encode_snapshot, recover, recover_from_reader, scan_log, scan_reader,
 };
 
 /// The default seed for the whole harness. The same seeded stream
@@ -277,11 +284,120 @@ fn run_surface(
             Ok(true) => valid += 1,
             Ok(false) => errors += 1,
             Err(payload) => {
-                let detail = payload
-                    .downcast_ref::<&str>()
-                    .map(|s| (*s).to_string())
-                    .or_else(|| payload.downcast_ref::<String>().cloned())
-                    .unwrap_or_else(|| "unknown panic".to_string());
+                let detail = panic_detail(&payload);
+                panic!(
+                    "decoder panicked: surface={surface} iteration={i} kind={kind} \
+                     offset={offset} seed={seed}: {detail}"
+                );
+            }
+        }
+    }
+    (valid, errors)
+}
+
+/// Extract a panic payload's message for the harness reports.
+fn panic_detail(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|s| (*s).to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown panic".to_string())
+}
+
+/// Scan `bytes` through the streaming scanner at one chunk size,
+/// the way `scan_reader` drives it over a reader.
+fn scan_streamed(bytes: &[u8], chunk: usize) -> Result<ScanOutcome, WalError> {
+    let mut scanner = LogScanner::new();
+    let mut frames = Vec::new();
+    for part in bytes.chunks(chunk) {
+        scanner.feed(part, &mut frames)?;
+    }
+    let discarded_trailing_bytes = scanner.finish(&mut frames)?;
+    Ok(ScanOutcome {
+        frames,
+        discarded_trailing_bytes,
+    })
+}
+
+/// The canonical outcome of one recovery, compared between the
+/// slice and streaming forms: the report fields plus the encoded
+/// snapshot bytes of the recovered book, so the forms agree only
+/// if they agree on everything observable.
+type RecoveryOutcome = (Option<u64>, usize, usize, usize, u64, Vec<u8>);
+
+/// Render one recovery to its canonical outcome.
+fn recovery_outcome(recovery: &Recovery) -> RecoveryOutcome {
+    let report = &recovery.report;
+    let mut encoded = Vec::new();
+    encode_snapshot(&recovery.book.capture_snapshot_state(), &mut encoded);
+    (
+        report.snapshot_seq,
+        report.frames_skipped,
+        report.frames_applied,
+        report.discarded_trailing_bytes,
+        report.last_recovered_seq,
+        encoded,
+    )
+}
+
+/// Feed `iterations` seeded mutations of `base` to a slice surface
+/// and its streaming counterpart as a pair (programme 4, lane U1).
+/// The two forms must agree exactly: the same verdict, on success
+/// the same outcome, and where `errors_must_match` holds, the same
+/// rendered error. (Recovery is exempt from error equality
+/// because the streaming form surfaces errors in stream order by
+/// contract; the scan shares one parser, so its errors must be
+/// identical.) A panic in either form, or any disagreement, fails
+/// with the mutation's coordinates. Returns the counts of valid
+/// and error outcomes.
+fn run_streaming_pair<T: PartialEq>(
+    base: &[u8],
+    iterations: usize,
+    surface: &str,
+    errors_must_match: bool,
+    mut slice: impl FnMut(&[u8]) -> Result<T, String>,
+    mut stream: impl FnMut(&[u8]) -> Result<T, String>,
+    mutate_fn: MutateFn,
+) -> (usize, usize) {
+    let seed = harness_seed();
+    let mut rng = SplitMix64::new(seed);
+    let mut valid = 0usize;
+    let mut errors = 0usize;
+    for i in 0..iterations {
+        let kind = i % 4;
+        let (bytes, offset) = mutate_fn(base, &mut rng, kind);
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            (slice(&bytes), stream(&bytes))
+        }));
+        match outcome {
+            Ok((Ok(slice_outcome), Ok(stream_outcome))) => {
+                assert!(
+                    slice_outcome == stream_outcome,
+                    "streaming outcome differs from the slice outcome: surface={surface} \
+                     iteration={i} kind={kind} offset={offset} seed={seed}"
+                );
+                valid += 1;
+            }
+            Ok((Err(slice_error), Err(stream_error))) => {
+                assert!(
+                    !errors_must_match || slice_error == stream_error,
+                    "streaming error differs from the slice error: surface={surface} \
+                     iteration={i} kind={kind} offset={offset} seed={seed}: \
+                     slice={slice_error} stream={stream_error}"
+                );
+                errors += 1;
+            }
+            Ok((slice_result, stream_result)) => {
+                panic!(
+                    "streaming and slice verdicts disagree: surface={surface} \
+                     iteration={i} kind={kind} offset={offset} seed={seed} \
+                     slice_ok={} stream_ok={}",
+                    slice_result.is_ok(),
+                    stream_result.is_ok()
+                );
+            }
+            Err(payload) => {
+                let detail = panic_detail(&payload);
                 panic!(
                     "decoder panicked: surface={surface} iteration={i} kind={kind} \
                      offset={offset} seed={seed}: {detail}"
@@ -385,4 +501,130 @@ fn mutation_harness_snapshot_multi_point_never_panics() {
         mutate_multi,
     );
     assert!(errors > 0, "mutations must end in typed errors");
+}
+
+#[test]
+fn mutation_harness_streaming_scan_matches_slice() {
+    // INV-WAL-7, lane U1: the streaming scanner the CLI's verify
+    // and replay actually run must agree with scan_log on every
+    // mutation: same verdict, same frames, same discarded count,
+    // same error, at chunk sizes 1, 7, and 64 and through
+    // scan_reader over a cursor.
+    let (wal, _snapshot) = fixture_bytes();
+    let (valid, errors) = run_streaming_pair(
+        &wal,
+        wal_cases(),
+        "scan streaming",
+        true,
+        |b| scan_log(b).map_err(|e| e.to_string()),
+        |b| {
+            let mut agreed = scan_streamed(b, 1).map_err(|e| e.to_string())?;
+            for chunk in [7usize, 64] {
+                let next = scan_streamed(b, chunk).map_err(|e| e.to_string())?;
+                assert_eq!(
+                    next, agreed,
+                    "chunk size {chunk} disagrees with chunk size 1"
+                );
+                agreed = next;
+            }
+            let via_reader = scan_reader(io::Cursor::new(b)).map_err(|e| e.to_string())?;
+            assert_eq!(via_reader, agreed, "scan_reader disagrees with the scanner");
+            Ok(agreed)
+        },
+        mutate,
+    );
+    assert!(valid > 0, "truncations must decode as clean prefixes");
+    assert!(errors > 0, "corruptions must end in typed errors");
+}
+
+#[test]
+fn mutation_harness_streaming_scan_multi_point_matches_slice() {
+    // INV-WAL-7, lane U1: the multi-point stream against the same
+    // streaming scan pair.
+    let (wal, _snapshot) = fixture_bytes();
+    let (valid, errors) = run_streaming_pair(
+        &wal,
+        wal_cases(),
+        "scan streaming multi-point",
+        true,
+        |b| scan_log(b).map_err(|e| e.to_string()),
+        |b| {
+            let mut agreed = scan_streamed(b, 1).map_err(|e| e.to_string())?;
+            for chunk in [7usize, 64] {
+                let next = scan_streamed(b, chunk).map_err(|e| e.to_string())?;
+                assert_eq!(
+                    next, agreed,
+                    "chunk size {chunk} disagrees with chunk size 1"
+                );
+                agreed = next;
+            }
+            let via_reader = scan_reader(io::Cursor::new(b)).map_err(|e| e.to_string())?;
+            assert_eq!(via_reader, agreed, "scan_reader disagrees with the scanner");
+            Ok(agreed)
+        },
+        mutate_multi,
+    );
+    assert!(
+        valid > 0,
+        "flip-and-truncate cases must decode as clean prefixes"
+    );
+    assert!(errors > 0, "corruptions must end in typed errors");
+}
+
+#[test]
+fn mutation_harness_streaming_recovery_matches_slice() {
+    // INV-WAL-7, lane U1: streaming recovery must agree with the
+    // slice form on every mutation: same verdict, and on success
+    // the same report and the same recovered book. The rendered
+    // errors may differ, because the streaming form surfaces them
+    // in stream order by contract.
+    let (wal, _snapshot) = fixture_bytes();
+    let (valid, errors) = run_streaming_pair(
+        &wal,
+        wal_cases(),
+        "recover streaming",
+        false,
+        |b| {
+            recover(config(), None, b)
+                .map(|r| recovery_outcome(&r))
+                .map_err(|e| e.to_string())
+        },
+        |b| {
+            recover_from_reader(config(), None, io::Cursor::new(b))
+                .map(|r| recovery_outcome(&r))
+                .map_err(|e| e.to_string())
+        },
+        mutate,
+    );
+    assert!(valid > 0, "truncations must recover their prefix");
+    assert!(errors > 0, "corruptions must end in typed errors");
+}
+
+#[test]
+fn mutation_harness_streaming_recovery_multi_point_matches_slice() {
+    // INV-WAL-7, lane U1: the multi-point stream against the same
+    // streaming recovery pair.
+    let (wal, _snapshot) = fixture_bytes();
+    let (valid, errors) = run_streaming_pair(
+        &wal,
+        wal_cases(),
+        "recover streaming multi-point",
+        false,
+        |b| {
+            recover(config(), None, b)
+                .map(|r| recovery_outcome(&r))
+                .map_err(|e| e.to_string())
+        },
+        |b| {
+            recover_from_reader(config(), None, io::Cursor::new(b))
+                .map(|r| recovery_outcome(&r))
+                .map_err(|e| e.to_string())
+        },
+        mutate_multi,
+    );
+    assert!(
+        valid > 0,
+        "flip-and-truncate cases must recover their prefix"
+    );
+    assert!(errors > 0, "corruptions must end in typed errors");
 }
