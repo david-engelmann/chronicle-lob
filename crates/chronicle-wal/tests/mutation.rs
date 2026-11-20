@@ -543,7 +543,7 @@ fn mutation_harness_streaming_scan_matches_slice() {
         wal_cases(),
         "scan streaming",
         true,
-        |b| scan_log(b),
+        scan_log,
         |b| {
             let mut agreed = scan_streamed(b, 1)?;
             for chunk in [7usize, 64] {
@@ -574,7 +574,7 @@ fn mutation_harness_streaming_scan_multi_point_matches_slice() {
         wal_cases(),
         "scan streaming multi-point",
         true,
-        |b| scan_log(b),
+        scan_log,
         |b| {
             let mut agreed = scan_streamed(b, 1)?;
             for chunk in [7usize, 64] {
