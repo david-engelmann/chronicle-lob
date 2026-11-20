@@ -13,6 +13,11 @@ follows Keep a Changelog, and the project uses semantic versioning.
   covers, bounding a long-running log's growth. The loop and its
   safety order are recorded in ARCHITECTURE.md section 10.6
   (programme 3, lane T5).
+- Mutation coverage of the streaming decoders. Every seeded
+  mutation also runs through the streaming scanner at several
+  chunk sizes, through scan_reader, and through streaming
+  recovery, and the streaming verdicts and outcomes must match
+  the slice forms exactly (programme 4, lane U1).
 
 ### Changed
 
