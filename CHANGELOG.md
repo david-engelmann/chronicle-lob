@@ -21,6 +21,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Changed
 
+- Performance figures refreshed. docs/PERFORMANCE.md records a
+  full measurement pass on the current code, the first since
+  the streaming rebuild (programme 4, lane U2).
 - Documentation currency. ARCHITECTURE.md section 14 now
   describes the CI that exists, all fifteen jobs and the four
   dispatch workflows, with the macOS test leg's cancellation

@@ -109,6 +109,41 @@ Source: benchmarks workflow run 44153859460 against main at dcf5e176 on a GitHub
 
 The append surface runs at 1.60 times its former throughput and the recovery surface at 1.26 times. Checksum values are unchanged. A differential test in the crc module proves the slicing implementation against a bit-at-a-time reference written straight from the polynomial at every input length from 0 to 517 and across six streaming split sizes, and the golden check value and the stored fixtures across the suite stand unmodified.
 
+## Programme 4 refresh of 2026-11-19 (lane U2)
+
+Source: benchmarks workflow run 44601074213, dispatched against
+main at commit fbee5f82, executed on a GitHub-hosted ubuntu-latest
+runner. This is the first full pass since the streaming rebuild
+(lanes S5 and T1) and the checkpoint lane (T5); every surface is
+re-measured on the current code. Figures are criterion's slope
+estimates with the confidence range in brackets, per operation
+where the benchmark counts operations.
+
+| Benchmark | Workload | Time | Throughput |
+| --- | --- | --- | --- |
+| add_cancel_best/add_resting | Stream of 1,000 resting limit adds on the 12,000-order occupied book, per operation | 34.80 ns [34.43, 35.31] | 28.73 million ops/s |
+| add_cancel_best/cancel | Stream of 1,000 cancels of resting orders on the same occupied book, per operation | 18.64 ns [18.61, 18.68] | 53.64 million ops/s |
+| best_bid_ask/best_bid_ask | One best bid and best ask lookup pair per iteration on the same occupied book | 5.77 ns [5.75, 5.79] | 173.31 million ops/s |
+| amend/amend_resting | Stream of 1,000 price-and-quantity amends against resting orders on the same occupied book, per amend | 22.13 ns [22.09, 22.18] | 45.18 million ops/s |
+| mass_cancel/cancel_by_participant | One cancel_by_participant call removing one participant's 800 resting orders from the same occupied book, per cancelled order | 61.70 ns [61.49, 61.99] | 16.21 million orders/s |
+| match_sweep/sweep_60_levels_600_makers | One incoming order filling 600 resting makers across 60 levels | 28.15 µs [27.72, 28.50] | 21.31 million makers/s |
+| depth/depth_100_levels | One depth query returning 100 levels from a book with 200 active levels and ten orders per level | 1.28 µs [1.17, 1.40] | 78.25 million levels/s |
+| wal_append/append_add_frame | One 72-byte add frame per append into a discarding sink, encoding and framing only, no storage device | 29.14 ns [29.13, 29.15] | 2,356.37 MiB/s |
+| recovery/recover_5000_frames | Full replay of a 5,000-frame log of add frames (360,000 bytes) into a fresh book | 322.14 µs [321.90, 322.43] | 1,065.90 MiB/s |
+| snapshot/encode_decode_round_trip | One encode and decode round trip of a snapshot state holding 12,000 live orders (947,012 encoded bytes), per round trip | 1.23 ms [1.23, 1.23] | 734.82 MiB/s |
+
+The mass cancel call as a whole measured 49.36 µs. The snapshot
+row is a slope estimate this time; the S2 pass reported the mean
+because that run produced no slope fit. Several surfaces read
+well above their last recorded figures on this run (the append
+surface at about twice its S3 reading, recovery at about 1.7
+times), while amend and mass cancel read slower than their S2
+figures. No performance code changed between the S3 pass and
+this one except the streaming rebuild the recovery path shares,
+so per this file's rule the run stands as the new comparison
+point for later runs on this machine class, and its movements
+are readings, not verdicts about the code.
+
 ## Refreshing the baseline
 
 Dispatch the benchmarks workflow (.github/workflows/bench.yml)
