@@ -12,7 +12,7 @@
 //! output against `wal_recovery.expected.txt`.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chronicle_core::{
     Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId, Side,
@@ -124,10 +124,13 @@ fn main() {
     assert_eq!(recovery.book.best_bid(), book.best_bid());
     assert_eq!(recovery.book.best_ask(), book.best_ask());
     println!("match: yes");
+    checkpoint_act(&wal_path, &mut storage);
+}
 
-    // The checkpoint composition (ARCHITECTURE.md section 10.6),
-    // run on a copy of the session log so the pair above survives
-    // for the README's worked example.
+// The checkpoint composition (ARCHITECTURE.md section 10.6),
+// run on a copy of the session log so the pair above survives
+// for the README's worked example.
+fn checkpoint_act(wal_path: &Path, storage: &mut Vec<ExecutionEvent>) {
     let checkpoint_wal = PathBuf::from("session-checkpoint.wal");
     fs::copy(&wal_path, &checkpoint_wal).expect("copy the session log");
     let checkpoint_path = PathBuf::from("session.checkpoint");
@@ -156,7 +159,7 @@ fn main() {
     let mut fresh_writer = WalWriter::new(file, SyncPolicy::Never);
     let next = add(4, 1, Side::Bid, 98, 3);
     {
-        let mut events = EventBuffer::new(&mut storage);
+        let mut events = EventBuffer::new(&mut *storage);
         next.apply(&mut continued, &mut events)
             .expect("continuation applies");
     }
