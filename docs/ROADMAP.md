@@ -481,3 +481,64 @@ DC-4 stands decided and exercised in the direction calls below.
   verify-published workflow's pins move to 0.2.0 in the release
   record commit, and tag v0.2.0 marks the record head, as v0.1.0
   did.
+
+## Programme 4: the D set (opened 2026-11-19)
+
+A fresh end-to-end audit at fbee5f82 found the streaming rebuild
+complete and the surfaces around it uneven. Findings D-1 to D-5,
+lanes U1 to U5 in order, approved by the orchestrator on
+2026-11-19. No direction call arose: nothing published, no format
+changed, no public API moved.
+
+- D-1: the mutation harness still targeted the slice decoders
+  while production read paths are the streaming surfaces (U1).
+- D-2: the performance record predated the streaming rebuild
+  (U2).
+- D-3: the published-crate verification ran only on dispatch
+  (U3).
+- D-4: CONTRIBUTING.md described the retired landing route (U4).
+- D-5: the checkpoint loop had no worked example (U5).
+
+### Lane U1: mutation coverage of the streaming decoders (D-1)
+
+Every seeded mutation also runs through the streaming scanner
+at chunk sizes 1, 7, and 64, through scan_reader, and through
+streaming recovery, with verdicts and outcomes asserted equal
+to the slice forms. Landed at 8109436a (PR #33). The harness
+convicted one real divergence on its first run: for a header
+corrupt in both its payload length and its reserved field, the
+slice form names the length and the streaming form names the
+reserved field, because the two paths judge the bytes in
+different orders by construction. Verdict, variant, and
+convicted offset agree in every case, and section 9.5 promises
+verdicts rather than field order, so the pair runner compares
+error identity (variant plus convicted offset) and the finding
+is recorded in the harness and in INV-WAL-7.
+
+### Lane U2: performance record refresh (D-2)
+
+A full criterion pass on the current code, recorded in
+docs/PERFORMANCE.md with the machine class named. Landed at
+d09ad7a1 (PR #34), figures from bench dispatch 44601074213 on
+fbee5f82. Append reads about twice its S3 figure and recovery
+about 1.7 times; amend and mass cancel read slower than S2. No
+performance code changed in the lane.
+
+### Lane U3: weekly verify-published schedule (D-3)
+
+A weekly cron (Mondays 06:17 UTC) joins the dispatch trigger,
+so a toolchain or registry change that breaks stranger
+consumption surfaces on its own. Landed at b4dcfb8c (PR #35).
+
+### Lane U4: CONTRIBUTING landing route (D-4)
+
+The Commits section states the route that exists and the
+changelog-per-lane rule. Landed at 37b332bf (PR #36).
+
+### Lane U5: checkpoint worked example (D-5)
+
+The wal example gains a second act running the checkpoint
+composition end to end on a copy of its session log, with the
+output pinned for CI. Landed at e53de9ba (PR #37).
+
+Programme 4 is complete: findings D-1 to D-5 are closed.
