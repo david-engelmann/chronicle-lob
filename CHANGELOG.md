@@ -26,6 +26,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Changed
 
+- CI caches the cargo registry and the target directory in
+  the ten compiling jobs, keyed by operating system, job
+  family, and the lockfile and toolchain hashes, with a
+  three-level restore fallback (Rust CI cache pilot).
 - CONTRIBUTING.md describes the landing route that exists
   (branch, hosted gate green on the exact head, squash merge
   with the merged tree verified identical to the green head)
