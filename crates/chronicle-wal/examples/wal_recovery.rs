@@ -132,7 +132,7 @@ fn main() {
 // for the README's worked example.
 fn checkpoint_act(wal_path: &Path, storage: &mut Vec<ExecutionEvent>) {
     let checkpoint_wal = PathBuf::from("session-checkpoint.wal");
-    fs::copy(&wal_path, &checkpoint_wal).expect("copy the session log");
+    fs::copy(wal_path, &checkpoint_wal).expect("copy the session log");
     let checkpoint_path = PathBuf::from("session.checkpoint");
     let streamed = recover_from_files(config(), None, &checkpoint_wal)
         .expect("streaming recovery of the copied log succeeds");
