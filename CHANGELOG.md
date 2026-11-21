@@ -18,9 +18,13 @@ follows Keep a Changelog, and the project uses semantic versioning.
   chunk sizes, through scan_reader, and through streaming
   recovery, and the streaming verdicts and outcomes must match
   the slice forms exactly (programme 4, lane U1).
-
 ### Changed
 
+- CONTRIBUTING.md describes the landing route that exists
+  (branch, hosted gate green on the exact head, squash merge
+  with the merged tree verified identical to the green head)
+  and states the rule that every landing lane adds its
+  changelog entry in the same commit (programme 4, lane U4).
 - Performance figures refreshed. docs/PERFORMANCE.md records a
   full measurement pass on the current code, the first since
   the streaming rebuild (programme 4, lane U2).

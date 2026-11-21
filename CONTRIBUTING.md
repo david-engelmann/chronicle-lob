@@ -47,8 +47,10 @@ counts and seeds locally.
 ## Commits
 
 Commits carry a Signed-off-by trailer with the author's identity.
-Milestones land on the main branch as single commits after their
-checks pass.
+Work lands through a pull request: a branch, the hosted gate green
+on the exact head, then a squash merge whose tree is verified
+identical to the reviewed head. Every landing lane adds its
+CHANGELOG.md entry in the same commit.
 
 ## Copy
 
