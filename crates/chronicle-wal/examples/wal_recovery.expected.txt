@@ -4,3 +4,7 @@ recovery: frames_skipped=3 frames_applied=2 discarded=0 last_recovered_seq=5
 recovered: live_orders=1 best_bid=99 best_ask=none
 live: live_orders=1 best_bid=99 best_ask=none
 match: yes
+checkpoint: last_included_seq=5 live_orders=1 archived=session-checkpoint.wal.archive-5
+continued: live_orders=2 best_bid=99 best_ask=none
+recovered-after-checkpoint: live_orders=2 best_bid=99 best_ask=none
+match: yes

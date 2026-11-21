@@ -18,6 +18,12 @@ follows Keep a Changelog, and the project uses semantic versioning.
   chunk sizes, through scan_reader, and through streaming
   recovery, and the streaming verdicts and outcomes must match
   the slice forms exactly (programme 4, lane U1).
+- The wal recovery example now runs the checkpoint composition
+  end to end on a copy of its session log: stream-recover,
+  snapshot, verify by loading back, archive the covered log,
+  start a fresh log, and recover across the seam, with the
+  output pinned for CI (programme 4, lane U5).
+
 ### Changed
 
 - CONTRIBUTING.md describes the landing route that exists
