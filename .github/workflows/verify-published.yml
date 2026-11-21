@@ -1,14 +1,18 @@
 name: verify-published
 
 # Proves the published 0.2.0 crates work the way a stranger
-# consumes them (docs/ROADMAP.md, direction call DC-1). Manual
-# dispatch only, run after all three crates are live on crates.io.
-# One job builds and runs a scratch binary against the published
-# chronicle-core and chronicle-wal; the other installs the
-# published chronicle-lob-cli and runs its bench subcommand.
+# consumes them (docs/ROADMAP.md, direction call DC-1). Run by
+# manual dispatch after a release, and weekly on a schedule so a
+# toolchain or registry change that breaks stranger consumption
+# surfaces on its own (programme 4, lane U3). One job builds and
+# runs a scratch binary against the published chronicle-core and
+# chronicle-wal; the other installs the published
+# chronicle-lob-cli and runs its bench subcommand.
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
 
 permissions:
   contents: read
