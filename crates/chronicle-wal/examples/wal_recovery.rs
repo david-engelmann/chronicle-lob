@@ -4,8 +4,12 @@
 //! rebuild the live book exactly. The example writes session.wal
 //! and session.snapshot into the current directory, which is the
 //! pair the README's worked example inspects with chronicle-cli.
-//! CI runs this example and diffs its output against
-//! `wal_recovery.expected.txt`.
+//! A second act then runs the checkpoint composition of
+//! ARCHITECTURE.md section 10.6 on a copy of the log, so the
+//! README pair survives: stream-recover, snapshot, verify by
+//! loading back, archive the covered log, start a fresh log, and
+//! recover across the seam. CI runs this example and diffs its
+//! output against `wal_recovery.expected.txt`.
 
 use std::fs;
 use std::path::PathBuf;
@@ -14,7 +18,9 @@ use chronicle_core::{
     Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId, Side,
     StpPolicy,
 };
-use chronicle_wal::{SyncPolicy, WalCommand, WalWriter, load_snapshot, recover, save_snapshot};
+use chronicle_wal::{
+    SyncPolicy, WalCommand, WalWriter, load_snapshot, recover, recover_from_files, save_snapshot,
+};
 
 const fn config() -> BookConfig {
     BookConfig {
@@ -117,5 +123,54 @@ fn main() {
     assert_eq!(recovery.book.live_order_count(), book.live_order_count());
     assert_eq!(recovery.book.best_bid(), book.best_bid());
     assert_eq!(recovery.book.best_ask(), book.best_ask());
+    println!("match: yes");
+
+    // The checkpoint composition (ARCHITECTURE.md section 10.6),
+    // run on a copy of the session log so the pair above survives
+    // for the README's worked example.
+    let checkpoint_wal = PathBuf::from("session-checkpoint.wal");
+    fs::copy(&wal_path, &checkpoint_wal).expect("copy the session log");
+    let checkpoint_path = PathBuf::from("session.checkpoint");
+    let streamed = recover_from_files(config(), None, &checkpoint_wal)
+        .expect("streaming recovery of the copied log succeeds");
+    let checkpoint_state = streamed.book.capture_snapshot_state();
+    save_snapshot(&checkpoint_path, &checkpoint_state).expect("save the checkpoint snapshot");
+    let verified = load_snapshot(&checkpoint_path, &config()).expect("the checkpoint loads");
+    assert_eq!(verified, checkpoint_state, "the checkpoint round-trips");
+    let covered = checkpoint_state.next_seq - 1;
+    let archive_path = PathBuf::from(format!("session-checkpoint.wal.archive-{covered}"));
+    fs::rename(&checkpoint_wal, &archive_path).expect("archive the covered log");
+    println!(
+        "checkpoint: last_included_seq={} live_orders={} archived={}",
+        covered,
+        checkpoint_state.live_orders.len(),
+        archive_path.display()
+    );
+
+    // The embedding application then starts a fresh log at the
+    // snapshot's next sequence, and recovery across the seam (the
+    // checkpoint snapshot plus the fresh log) rebuilds the
+    // continued book exactly.
+    let mut continued = streamed.book;
+    let file = fs::File::create(&checkpoint_wal).expect("create the fresh log");
+    let mut fresh_writer = WalWriter::new(file, SyncPolicy::Never);
+    let next = add(4, 1, Side::Bid, 98, 3);
+    {
+        let mut events = EventBuffer::new(&mut storage);
+        next.apply(&mut continued, &mut events)
+            .expect("continuation applies");
+    }
+    storage.clear();
+    fresh_writer
+        .append(&next, covered + 1)
+        .expect("append continuation frame");
+    drop(fresh_writer);
+    let across = recover_from_files(config(), Some(&checkpoint_path), &checkpoint_wal)
+        .expect("recovery across the checkpoint seam succeeds");
+    describe("continued", &continued);
+    describe("recovered-after-checkpoint", &across.book);
+    assert_eq!(across.book.live_order_count(), continued.live_order_count());
+    assert_eq!(across.book.best_bid(), continued.best_bid());
+    assert_eq!(across.book.best_ask(), continued.best_ask());
     println!("match: yes");
 }
