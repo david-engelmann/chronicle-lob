@@ -1076,6 +1076,17 @@ and Windows at PR volume (programme 2, lane S4), so the
 supported platforms are exercised on every change. The
 remaining gates run on Ubuntu.
 
+Ten of the fifteen jobs compile, and each of those carries a
+cache step after the toolchain install (the Rust CI cache
+pilot, landed 2026-11-21). The step restores and saves the
+cargo registry and the target directory under a key built from
+the operating system, the job family, and the hashes of
+Cargo.lock and rust-toolchain.toml, with restore fallbacks
+through the family's own prefix and the test family's. The
+rustfmt check, the zero-dependency check, and the determinism
+gate compile nothing and carry no cache step. A cache miss is
+a cold build, never a failure.
+
 On main pushes only, two seed sweeps run the full suite at
 10,000 property cases. Their SIM_SEED values rotate with the
 workflow run number (programme 3, lane T3), so successive main
@@ -1083,14 +1094,17 @@ runs explore new cases instead of re-proving one fixed stream.
 Each sweep echoes the seed in force, and any run reproduces
 locally with that seed.
 
-Four dispatch-only workflows stand beside CI. bench.yml runs
-the criterion suite and uploads the results that feed
-docs/PERFORMANCE.md. publish.yml packages one crate with a full
-verification build for a crates.io release.
-verify-published.yml proves the published crates work from a
-stranger's machine. mutation-deep.yml runs the decoder mutation
-harness at one hundred thousand cases per surface under a
-rotating seed.
+Four workflows stand beside CI. bench.yml runs the criterion
+suite on dispatch and uploads the results that feed
+docs/PERFORMANCE.md. publish.yml packages one crate on
+dispatch with a full verification build for a crates.io
+release. verify-published.yml proves the published crates
+work from a stranger's machine; it runs on dispatch and
+weekly on a schedule (programme 4, lane U3), so a toolchain
+or registry change that breaks stranger consumption surfaces
+on its own. mutation-deep.yml runs the decoder mutation
+harness on dispatch at one hundred thousand cases per surface
+under a rotating seed.
 
 One operational note. The macOS test leg is occasionally
 cancelled by the runner infrastructure under load, five times

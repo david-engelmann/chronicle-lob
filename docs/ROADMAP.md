@@ -542,3 +542,77 @@ composition end to end on a copy of its session log, with the
 output pinned for CI. Landed at e53de9ba (PR #37).
 
 Programme 4 is complete: findings D-1 to D-5 are closed.
+
+## Programme 5: the E set (opened 2026-11-22)
+
+A fresh audit at 6e9d1615, the cache pilot's landing, found the
+engine and its gates in good order and the surfaces around
+them uneven again. Findings E-1 to E-6, lanes V1 to V6. One
+direction call, DC-5, is raised below for David; no lane waits
+on it.
+
+- E-1: ARCHITECTURE.md section 14 never mentions the cache
+  step the pilot added to ten of the fifteen CI jobs, and it
+  describes verify-published as dispatch-only when lane U3
+  gave it a weekly schedule (V1).
+- E-2: the three compiling dispatch workflows (bench,
+  mutation-deep, publish) still build from cold, the pilot
+  note's flagged rollout follow-on (V2).
+- E-3: the selling layer carries no media at all; the README
+  has no image, GIF, or video (V3).
+- E-4: the INVARIANTS traceability (53 rows plus CHECK-DOC-1)
+  has never been re-verified end to end since the streaming
+  refactors moved and renamed tests (V4).
+- E-5: the cache pilot's median follow-up is owed, three
+  warm runs per event type before the fleet-template verdict
+  hardens (V5).
+- E-6: no crate carries a README, so the crates.io pages
+  render no readme for any of the three published crates
+  (V6).
+
+### Lane V1: section 14 currency (E-1)
+
+Section 14 describes the cache step and the weekly
+verify-published run, and this programme section lands in the
+same commit, so the design record lives in the repo.
+
+### Lane V2: cache rollout to the dispatch workflows (E-2)
+
+bench.yml, mutation-deep.yml, and publish.yml gain the cache
+step in the pilot's terms, with cold and warm dispatch
+measurements recorded.
+
+### Lane V6: crate READMEs (E-6)
+
+Each crate gains a README stating what the crate is, what it
+does, and how it is used, and the package lists are
+re-verified. The lane runs early so any future release ships
+them.
+
+### Lane V4: INVARIANTS traceability audit (E-4)
+
+Every row's enforcement cell is cross-checked against the
+tree, that the named tests and benchmarks exist and run, and
+repairs land in the same lane.
+
+### Lane V3: selling-layer media (E-3)
+
+A scripted terminal demo of the worked example, with verify,
+replay, and checkpoint run against the session files,
+recorded as a high-quality GIF and placed in the README.
+Demo material only, under the Stageshow boundary.
+
+### Lane V5: cache medians record (E-5)
+
+The warm PR and main runs that normal traffic accrues are
+collected, and the medians are recorded with the
+fleet-template verdict stated from them. The lane closes
+last, when three warm runs exist per event type.
+
+### Direction calls for programme 5
+
+- DC-5, publish 0.3.0. The Unreleased changelog holds eight
+  entries spanning programmes 3 and 4 and the cache pilot.
+  Raised for David; nothing in this programme waits on it,
+  and lane V6 runs early so a release, if called, ships the
+  crate READMEs.

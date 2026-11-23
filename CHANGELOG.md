@@ -26,6 +26,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Changed
 
+- ARCHITECTURE.md section 14 describes the CI cache step and
+  the weekly published-crate verification, and docs/ROADMAP.md
+  opens programme 5 (programme 5, lane V1).
 - CI caches the cargo registry and the target directory in
   the ten compiling jobs, keyed by operating system, job
   family, and the lockfile and toolchain hashes, with a
