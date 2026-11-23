@@ -18,6 +18,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
   chunk sizes, through scan_reader, and through streaming
   recovery, and the streaming verdicts and outcomes must match
   the slice forms exactly (programme 4, lane U1).
+- A README for each crate, stating what the crate is, what it
+  does, and how it is used, so the crates.io pages render a
+  readme for chronicle-core, chronicle-wal, and
+  chronicle-lob-cli (programme 5, lane V6).
 - The wal recovery example now runs the checkpoint composition
   end to end on a copy of its session log: stream-recover,
   snapshot, verify by loading back, archive the covered log,
