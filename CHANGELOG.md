@@ -29,6 +29,11 @@ follows Keep a Changelog, and the project uses semantic versioning.
 - ARCHITECTURE.md section 14 describes the CI cache step and
   the weekly published-crate verification, and docs/ROADMAP.md
   opens programme 5 (programme 5, lane V1).
+- The three compiling dispatch workflows (bench, mutation-deep,
+  publish) cache the cargo registry and the target directory
+  with the same pinned cache step as CI, the bench family for
+  the two release-profile workflows and the package family for
+  publish (programme 5, lane V2).
 - CI caches the cargo registry and the target directory in
   the ten compiling jobs, keyed by operating system, job
   family, and the lockfile and toolchain hashes, with a

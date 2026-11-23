@@ -45,5 +45,18 @@ jobs:
           echo "mutation seed in force: $SEED"
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Cache cargo registry and target
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bench-
+            ${{ runner.os }}-cargo-test-
+            ${{ runner.os }}-cargo-
       - name: cargo test --release -p chronicle-wal --test mutation --locked
         run: cargo test --release -p chronicle-wal --test mutation --locked
