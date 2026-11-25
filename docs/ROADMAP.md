@@ -969,3 +969,10 @@ best_bid_ask 11.73 ns, amend 24.53 ns, mass cancel
 741.78 MiB/s. Movement against the U2 pass runs both
 ways, as between every pair of passes on shared
 runners; no performance change is claimed.
+
+Programme 9 is complete: Z1 landed at a84c491c
+(PR #63), with the criterion 0.8 performance pass
+recorded in docs/PERFORMANCE.md from bench dispatch
+run 45601655307, and this closure record is Z2.
+The I set held one item and it is closed. DC-5
+remains open as David's call.
