@@ -748,6 +748,12 @@ a fresh rotating seed, with the result recorded here. A
 repair lane follows only if the exercise convicts
 something.
 
+Outcome: dispatch run 45534405839 at 5e04b7e1 completed
+success, seed in force 70005. All eight mutation tests
+passed at the deep volume of 100,000 cases per surface,
+the four streaming pair tests among them. No panic and
+no conviction, so no repair lane follows.
+
 ### Lane W3: the security policy (F-3)
 
 SECURITY.md states the supported versions and the
