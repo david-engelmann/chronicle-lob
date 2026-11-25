@@ -641,6 +641,55 @@ collected, and the medians are recorded with the
 fleet-template verdict stated from them. The lane closes
 last, when three warm runs exist per event type.
 
+Outcome: six warm runs per event type had accrued by the
+V3 landing (the pilot's warm re-run and PRs 40 to 44; the
+six main runs of the same landings). Medians below are per
+job, started to completed, with the pre-pilot baseline
+beside them (the single PR run 44751716892 and main run
+44752806343 from the pilot's design note; wall medians are
+over each era's successful runs).
+
+Pull requests, wall median 198s against a 208s baseline
+median. Test on macOS 176s against 245s. Bench compile 34s
+against 54s. Test on Ubuntu 128s against 131s. Test on
+Windows 186s against 124s, the one leg worse at the median,
+with values spread 150s to 194s across the six runs.
+Examples on macOS 46s against 57s, on Windows 52s against
+47s, on Ubuntu 21s against 27s. Clippy 20s against 26s.
+Package 20s against 17s and rustdoc 20s against 16s, both
+flat.
+
+Main runs, wall median 723s against a 735s baseline
+median, inside the baseline range. First seed sweep 720s
+against 538s and second seed sweep 532s against 420s.
+Test on macOS 185s against 178s, on Ubuntu 133s against
+176s, on Windows 198s against 181s. Bench compile 38s
+against 45s. Examples on macOS 38s against 49s, on Windows
+55s against 104s, on Ubuntu 18s against 26s. Clippy 25s
+against 26s, package 17s against 19s, rustdoc 25s against
+26s.
+
+The hit evidence is tied to the same era's logs. The
+newest PR run's macOS test and bench compile jobs and the
+newest main run's first sweep all log a primary-key cache
+hit on their family keys. The sweep is the telling case:
+it restores its cache and still runs 726s in that run,
+because its time is 10,000-case execution, which no cache
+can shorten. That is the design note's prediction,
+confirmed rather than assumed.
+
+Verdict for the fleet template: keep the step. It earns
+its place on the compile-heavy PR legs (the macOS test leg
+and the bench compile check are the clear gains), it is
+neutral on the small jobs, and it cannot move execution-
+bound work, which is what sets the main wall clock. One
+confound stands from the pilot's first comparison: the
+toolchain action's bundled cache was already active in
+the baseline era, so these deltas are the explicit step's
+marginal effect on top of it, entangled with runner
+variance; the clean claims are the hit lines and the
+sweep case above.
+
 ### Direction calls for programme 5
 
 - DC-5, publish 0.3.0. The Unreleased changelog holds eight
@@ -648,3 +697,11 @@ last, when three warm runs exist per event type.
   Raised for David; nothing in this programme waits on it,
   and lane V6 runs early so a release, if called, ships the
   crate READMEs.
+
+Programme 5 is complete: V1 landed at 0a3ec1f1 (PR #40),
+V2 at d9d1b90d (PR #41), V6 at 70b0cc01 (PR #42), the V4
+audit at 1a2cb443 (PR #43), V3 at a881ccbf (PR #44), and
+the V5 record in this section. Every E finding is closed.
+DC-5 remains open as David's call, and the Unreleased
+changelog now holds the programme 3, 4, and 5 entries and
+the cache pilot's.

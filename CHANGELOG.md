@@ -30,6 +30,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- docs/ROADMAP.md records the programme 5 lane V5 cache
+  medians (six warm runs per event type) with the
+  fleet-template verdict, and closes programme 5.
 - The README carries an animated demo of the wal_recovery
   worked example (docs/media/demo.gif, with a still poster
   frame), produced under the Stageshow boundary as demo
