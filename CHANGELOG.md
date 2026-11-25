@@ -5,6 +5,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md closes programme 17: the
+  post-launch deep mutation record is landed
+  at f8a734f0 (PR #80), with PR #79's changelog
+  entry restored after a landing collision.
 - docs/ROADMAP.md opens programme 17 and records
   the post-launch deep mutation exercise: clean
   at bf85e526 under seed 70007, fifteen tests at
@@ -83,6 +87,10 @@ helpers.
 - Animated `wal_recovery` demo in `README.md` (`docs/media/demo.gif`)
   and end-to-end checkpoint act in the `wal_recovery` example
   (programmes 4 and 5).
+- Public documentation index (`docs/README.md`), light and dark SVG
+  lockups and architecture and guarantee diagrams, a `1200x630`
+  social card, and a split-screen `docs/media/money-shot.gif` built
+  from pinned real outputs.
 - Mutation coverage of the streaming decoders across chunk sizes,
   `scan_reader`, and `recover_from_reader` against their slice forms
   (programme 4, lane U1).
