@@ -41,6 +41,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Changed
 
+- The deep mutation exercise ran at the current main head
+  (run 45534405839, seed 70005, all eight tests passed at
+  100,000 cases per surface), recorded in docs/ROADMAP.md
+  (programme 6, lane W2).
 - ARCHITECTURE.md section 14 names the cache rollout to
   the dispatch workflows (programme 6, lane W1).
 - docs/ROADMAP.md records the programme 5 lane V4 audit
