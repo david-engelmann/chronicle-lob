@@ -41,6 +41,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- docs/ROADMAP.md closes programme 11: the
+  merge-integrity sweep is recorded at 644f3d55
+  (PR #67).
 - docs/ROADMAP.md opens programme 11 with the
   merge-integrity sweep: every squash merge from
   programme 7 onward carries exactly its intended

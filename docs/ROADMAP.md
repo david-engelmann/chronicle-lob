@@ -1057,3 +1057,15 @@ on main after the merge.
 This section is the lane: the sweep, its outcome,
 and the standing practice above. The changelog
 entry rides along. AB2 closes the programme.
+
+AB1 outcome: the sweep record and the standing
+practice landed at 644f3d55 (PR #67), its merge
+verified by the three checks the record itself
+names: tree identity, a parent diff of exactly the
+two record files, and the landed text read back on
+main.
+
+Programme 11 is complete: AB1 landed at 644f3d55
+(PR #67), and this closure record is AB2. The K set
+held one lane, the sweep record, and it is closed.
+DC-5 remains open as David's call.
