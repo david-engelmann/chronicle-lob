@@ -35,7 +35,7 @@ jobs:
     name: rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Check workspace presence
@@ -52,7 +52,7 @@ jobs:
     name: clippy (pedantic, nursery, deny todo/unimplemented)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Cache cargo registry and target
@@ -86,7 +86,7 @@ jobs:
     env:
       PROPTEST_CASES: "1000"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Cache cargo registry and target
@@ -120,7 +120,7 @@ jobs:
     env:
       PROPTEST_CASES: "10000"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       # Programme 3 lane T3: the sweep seed rotates with the run
       # number, so successive main runs explore new cases instead
       # of re-proving one fixed stream forever. The test step
@@ -161,7 +161,7 @@ jobs:
     env:
       PROPTEST_CASES: "10000"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       # Lane T3 rotation, offset from the first sweep's stream so
       # the two sweeps never run the same seed in the same run.
       - name: Derive this run's seed
@@ -201,7 +201,7 @@ jobs:
     env:
       RUSTDOCFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Cache cargo registry and target
@@ -231,7 +231,7 @@ jobs:
     name: bench compile check (cargo bench -- --test)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Cache cargo registry and target
@@ -261,7 +261,7 @@ jobs:
     name: chronicle-core stays std-only and zero-dependency
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Check workspace presence
@@ -297,7 +297,7 @@ jobs:
     name: determinism gate (INV-DET-1 forbidden tokens in core)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Check core sources presence
         id: ws
         run: |
@@ -341,7 +341,7 @@ jobs:
     name: crates package cleanly (publication readiness, R1)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Cache cargo registry and target
@@ -383,7 +383,7 @@ jobs:
     name: examples run with pinned output (R2)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Cache cargo registry and target
@@ -431,7 +431,7 @@ jobs:
     env:
       PROPTEST_CASES: "1000"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Cache cargo registry and target
@@ -468,7 +468,7 @@ jobs:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Cache cargo registry and target

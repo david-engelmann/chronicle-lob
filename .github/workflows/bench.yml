@@ -20,7 +20,7 @@ jobs:
     name: criterion benchmarks (full measurement)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Cache cargo registry and target
@@ -39,7 +39,7 @@ jobs:
       - name: cargo bench --workspace --locked
         run: cargo bench --workspace --locked
       - name: Upload criterion reports
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: criterion-${{ github.sha }}
           path: target/criterion

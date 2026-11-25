@@ -15,7 +15,7 @@ repository = "https://github.com/david-engelmann/chronicle-lob"
 
 [dev-dependencies]
 proptest = "1"
-criterion = "0.5"
+criterion = "0.8"
 
 [[bench]]
 name = "bench_add_cancel_best"

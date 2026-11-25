@@ -8,11 +8,12 @@
     reason = "criterion_group! generates the bench entry function without documentation"
 )]
 
+use std::hint::black_box;
 use chronicle_core::{
     Book, BookConfig, DepthLevel, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId,
     Side, StpPolicy,
 };
-use criterion::{BatchSize, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 
 const fn bench_config() -> BookConfig {
     BookConfig {
