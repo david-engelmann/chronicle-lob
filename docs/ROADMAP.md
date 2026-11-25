@@ -934,3 +934,38 @@ Programme 8 is complete: Y1 landed at 5202b926
 (PR #61) and Y2 at 817b61df (PR #53), with this
 closure record as Y3. Every H finding is closed.
 DC-5 remains open as David's call.
+
+## Programme 9: the I set (opened 2026-11-25)
+
+A fresh audit at bcc3f1c5 found the surfaces
+programmes 3 to 8 closed still closed: ARCHITECTURE
+section 14's cache wording names no action version
+and stays accurate under v6, both alert surfaces are
+empty, the demo still matches the example output it
+pins, and the deep mutation exercise stands current
+from W2. One item stood out: every figure in
+docs/PERFORMANCE.md was measured under criterion
+0.5, and programme 8 moved the harness to 0.8, so
+the performance record was one harness generation
+stale. Lane Z1 refreshes it, then the closure
+record.
+
+### Lane Z1: performance pass under criterion 0.8
+
+A full bench dispatch at the current main, with the
+new pass recorded in docs/PERFORMANCE.md as a dated
+section naming the harness change and claiming no
+performance change, since no measured code changed.
+
+Outcome: bench dispatch run 45601655307 at main
+bcc3f1c5 completed success, and the pass is recorded
+in docs/PERFORMANCE.md (the Programme 9 pass of
+2026-11-25). Add 40.58 ns, cancel 24.11 ns,
+best_bid_ask 11.73 ns, amend 24.53 ns, mass cancel
+73.69 ns per order, sweep 27.33 microseconds, depth
+915.02 ns, wal_append 41.34 ns per frame at
+1,661.25 MiB/s, recovery 422.01 microseconds at
+813.54 MiB/s, snapshot round trip 1.22 ms at
+741.78 MiB/s. Movement against the U2 pass runs both
+ways, as between every pair of passes on shared
+runners; no performance change is claimed.

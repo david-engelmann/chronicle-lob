@@ -41,6 +41,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- docs/PERFORMANCE.md records a full measurement pass
+  under criterion 0.8.2 (programme 9, lane Z1; bench
+  dispatch run 45601655307 at bcc3f1c5).
 - docs/ROADMAP.md closes programme 8: the criterion
   0.8 migration landed at 5202b926 (PR #61) and the
   cache v6 re-baseline at 817b61df (PR #53), verdict
