@@ -28,6 +28,9 @@ pub enum WalCorruption {
         /// The header length value found in the header.
         found: u16,
     },
+    /// The frame sequence number is zero; valid WAL sequence numbers
+    /// start at 1.
+    ZeroSequence,
     /// The payload length exceeds the 4096 byte cap.
     PayloadTooLarge {
         /// The payload length value found in the header.
@@ -203,6 +206,9 @@ impl fmt::Display for WalCorruption {
             Self::BadVersion { found } => write!(f, "unsupported WAL version {found}"),
             Self::BadHeaderLen { found } => {
                 write!(f, "header length {found}, expected 32")
+            }
+            Self::ZeroSequence => {
+                write!(f, "frame sequence number must be at least 1")
             }
             Self::PayloadTooLarge { found } => {
                 write!(f, "payload length {found} exceeds the 4096 byte cap")

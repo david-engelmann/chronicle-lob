@@ -181,6 +181,35 @@ pair of passes on shared runners. The pass exists so
 the record stands on the current harness, not as
 evidence of a performance change: none is claimed.
 
+## 0.3.0 harness and algorithm notes (2026-11-25)
+
+Release 0.3.0 aligns the Criterion suite and core bitmap hierarchy ahead
+of the next hosted `bench.yml` dispatch on `ubuntu-latest`:
+
+- `recovery/recover_from_reader_5000_frames` joins `bench_recovery`
+  alongside `recovery/recover_5000_frames` (INV-LAT-4), measuring bounded
+  8 KiB streaming recovery over the same 5,000-frame (360,000-byte) log.
+- `depth/depth_100_levels` now measures `Book::depth` directly on a
+  pre-built `&Book` instead of dropping `Book` inside `iter_batched`,
+  and `Bitmap::highest_below` and `Bitmap::lowest_above` step through
+  the 64-ary summary hierarchy in `O(bitmap depth)` rather than scanning
+  leaf words.
+- `match_sweep/sweep_60_levels_600_makers` returns `(book, storage)` from
+  its `iter_batched` routine so Criterion drops both outside the timed
+  window (INV-LAT-2).
+- `snapshot/encode_decode_round_trip` hoists its reusable `Vec<u8>`
+  outside `b.iter` to measure steady-state encode and decode without
+  per-iteration heap allocation, paired with `save_snapshot_with_buffer`
+  in `chronicle-wal` (INV-ALLOC-3) and unconditional structural
+  validation in both `decode_snapshot` and `Book::from_snapshot_state`
+  (INV-SNAP-1).
+- `add_cancel_best` and `amend` wrap all inputs and outputs in
+  `black_box`.
+
+Per CHECK-DOC-1, hosted-runner readings for the updated suite are
+recorded only from a dispatched `.github/workflows/bench.yml` run on the
+standard `ubuntu-latest` runner class.
+
 ## Refreshing the baseline
 
 Dispatch the benchmarks workflow (.github/workflows/bench.yml)

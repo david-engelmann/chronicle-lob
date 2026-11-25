@@ -119,10 +119,52 @@ impl<'a> EventBuffer<'a> {
         self.out.capacity() - self.out.len()
     }
 
-    /// Events written since this buffer was created.
+    /// Events written since this buffer was created (or last cleared).
     #[must_use]
     pub fn written(&self) -> &[ExecutionEvent] {
         &self.out[self.start..]
+    }
+
+    /// Discard every event written through this buffer since it was
+    /// created, reclaiming their capacity for subsequent commands while
+    /// leaving any earlier entries in the underlying vector untouched.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronicle_core::{
+    ///     Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId,
+    ///     Side, StpPolicy,
+    /// };
+    ///
+    /// let mut book = Book::new(BookConfig {
+    ///     max_orders: 16,
+    ///     grid_len: 64,
+    ///     tick_size: 1,
+    ///     grid_start_tick: 1,
+    ///     default_stp: StpPolicy::CancelIncoming,
+    /// })
+    /// .unwrap();
+    /// let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(8);
+    /// let mut events = EventBuffer::new(&mut storage);
+    /// book.add_order(
+    ///     OrderId(1),
+    ///     ParticipantId(1),
+    ///     Side::Bid,
+    ///     OrderType::Limit,
+    ///     10,
+    ///     5,
+    ///     None,
+    ///     &mut events,
+    /// )
+    /// .unwrap();
+    /// assert_eq!(events.written().len(), 1);
+    /// events.clear();
+    /// assert!(events.written().is_empty());
+    /// assert_eq!(events.remaining(), 8);
+    /// ```
+    pub fn clear(&mut self) {
+        self.out.truncate(self.start);
     }
 
     /// Append one event. Engine-internal: preflight has already proved

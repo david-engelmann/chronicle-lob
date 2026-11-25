@@ -1,16 +1,18 @@
 [package]
 name = "chronicle-wal"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.100"
 description = "CRC32C write-ahead log and atomic snapshots for chronicle order books"
 license = "MIT OR Apache-2.0"
+readme = "README.md"
+documentation = "https://docs.rs/chronicle-wal"
 keywords = ["write-ahead-log", "wal", "durability", "deterministic"]
 categories = ["data-structures", "filesystem"]
 repository = "https://github.com/david-engelmann/chronicle-lob"
 
 [dependencies]
-chronicle-core = { version = "0.2.0", path = "../chronicle-core" }
+chronicle-core = { version = "0.3.0", path = "../chronicle-core" }
 
 [dev-dependencies]
 proptest = "1"

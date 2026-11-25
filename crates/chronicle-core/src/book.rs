@@ -33,6 +33,85 @@ pub struct DepthLevel {
     pub order_count: u32,
 }
 
+/// Read-only view of one live resting order returned by
+/// [`Book::get_order`] and yielded by [`OrdersAt`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OrderInfo {
+    /// Caller-supplied order identifier.
+    pub order_id: OrderId,
+    /// Owner of the order.
+    pub participant: ParticipantId,
+    /// Which side of the book the order rests on.
+    pub side: Side,
+    /// Raw limit price in quote units.
+    pub price: u64,
+    /// Remaining open quantity.
+    pub qty: u64,
+}
+
+/// Zero-allocation FIFO iterator over the live orders resting at one
+/// price level, returned by [`Book::orders_at`].
+///
+/// Yields [`OrderInfo`] values in arrival priority order from head to
+/// tail (or tail to head via [`DoubleEndedIterator`]).
+#[derive(Clone, Debug)]
+pub struct OrdersAt<'a> {
+    book: &'a Book,
+    head_slot: u32,
+    tail_slot: u32,
+    remaining: usize,
+}
+
+impl Iterator for OrdersAt<'_> {
+    type Item = OrderInfo;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            return None;
+        }
+        let slot = self.head_slot;
+        let info = self.book.order_info_at_slot(slot);
+        self.remaining -= 1;
+        if self.remaining == 0 {
+            self.head_slot = NIL;
+            self.tail_slot = NIL;
+        } else {
+            self.head_slot = self.book.arena.next[slot as usize];
+        }
+        Some(info)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl DoubleEndedIterator for OrdersAt<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            return None;
+        }
+        let slot = self.tail_slot;
+        let info = self.book.order_info_at_slot(slot);
+        self.remaining -= 1;
+        if self.remaining == 0 {
+            self.head_slot = NIL;
+            self.tail_slot = NIL;
+        } else {
+            self.tail_slot = self.book.arena.prev[slot as usize];
+        }
+        Some(info)
+    }
+}
+
+impl ExactSizeIterator for OrdersAt<'_> {
+    fn len(&self) -> usize {
+        self.remaining
+    }
+}
+
+impl core::iter::FusedIterator for OrdersAt<'_> {}
+
 /// A single-instrument limit order book on one tick grid.
 pub struct Book {
     /// The validated configuration this book was built with.
@@ -53,6 +132,19 @@ pub struct Book {
     /// Sequence number the next accepted command will take. Starts at
     /// 1; rejected commands consume nothing.
     next_seq: u64,
+}
+
+impl core::fmt::Debug for Book {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Book")
+            .field("config", &self.config)
+            .field("next_seq", &self.next_seq)
+            .field("live_orders", &self.live_order_count())
+            .field("free_orders", &self.free_order_count())
+            .field("best_bid", &self.best_bid())
+            .field("best_ask", &self.best_ask())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Book {
@@ -106,6 +198,16 @@ impl Book {
         self.arena.live_count()
     }
 
+    /// Number of arena slots currently available on the free list.
+    ///
+    /// Accounts for any slots permanently retired on generation
+    /// overflow (INV-ARENA-4), so callers can inspect exact remaining
+    /// resting capacity in `O(1)`.
+    #[must_use]
+    pub const fn free_order_count(&self) -> u32 {
+        self.arena.free_count()
+    }
+
     /// Sequence number the next accepted command will take.
     #[must_use]
     pub const fn next_seq(&self) -> u64 {
@@ -128,6 +230,140 @@ impl Book {
         self.asks
             .lowest()
             .map(|idx| (self.price_of_idx(idx), self.levels.qty[idx as usize]))
+    }
+
+    /// Current top-of-book spread (`best_ask - best_bid`) in quote
+    /// units, or `None` when either side is empty.
+    #[must_use]
+    pub fn spread(&self) -> Option<u64> {
+        let (bid, _) = self.best_bid()?;
+        let (ask, _) = self.best_ask()?;
+        ask.checked_sub(bid)
+    }
+
+    /// True when `order_id` currently rests live on the book.
+    #[must_use]
+    pub fn contains_order(&self, order_id: OrderId) -> bool {
+        if order_id.0 == 0 {
+            return false;
+        }
+        self.lookup
+            .get(order_id.0)
+            .is_some_and(|(slot, generation)| self.arena.validate_handle(slot, generation))
+    }
+
+    /// Look up one live resting order by id in `O(1)` without
+    /// allocating.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronicle_core::{
+    ///     Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderInfo, OrderType,
+    ///     ParticipantId, Side, StpPolicy,
+    /// };
+    ///
+    /// let mut book = Book::new(BookConfig {
+    ///     max_orders: 16,
+    ///     grid_len: 640,
+    ///     tick_size: 1,
+    ///     grid_start_tick: 1,
+    ///     default_stp: StpPolicy::CancelIncoming,
+    /// })
+    /// .unwrap();
+    /// let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(8);
+    /// let mut events = EventBuffer::new(&mut storage);
+    /// book.add_order(
+    ///     OrderId(7),
+    ///     ParticipantId(2),
+    ///     Side::Bid,
+    ///     OrderType::Limit,
+    ///     100,
+    ///     15,
+    ///     None,
+    ///     &mut events,
+    /// )
+    /// .unwrap();
+    /// assert_eq!(
+    ///     book.get_order(OrderId(7)),
+    ///     Some(OrderInfo {
+    ///         order_id: OrderId(7),
+    ///         participant: ParticipantId(2),
+    ///         side: Side::Bid,
+    ///         price: 100,
+    ///         qty: 15,
+    ///     })
+    /// );
+    /// assert_eq!(book.get_order(OrderId(999)), None);
+    /// ```
+    #[must_use]
+    pub fn get_order(&self, order_id: OrderId) -> Option<OrderInfo> {
+        if order_id.0 == 0 {
+            return None;
+        }
+        let (slot, generation) = self.lookup.get(order_id.0)?;
+        if !self.arena.validate_handle(slot, generation) {
+            return None;
+        }
+        Some(self.order_info_at_slot(slot))
+    }
+
+    /// Query the aggregated side and L2 summary at `price`, returning
+    /// `Ok(None)` when the price is on-grid and currently empty.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BookError::InvalidPriceTick`] when `price` is not on
+    /// the configured tick grid.
+    pub fn level_at(&self, price: u64) -> Result<Option<(Side, DepthLevel)>, BookError> {
+        let idx = self.price_to_idx(price)?;
+        let i = idx as usize;
+        if self.levels.count[i] == 0 {
+            return Ok(None);
+        }
+        let side = if self.bids.contains(idx) {
+            Side::Bid
+        } else {
+            debug_assert!(self.asks.contains(idx));
+            Side::Ask
+        };
+        Ok(Some((
+            side,
+            DepthLevel {
+                price,
+                total_qty: self.levels.qty[i],
+                order_count: self.levels.count[i],
+            },
+        )))
+    }
+
+    /// Return a zero-allocation FIFO iterator over the resting orders
+    /// at `price`, from oldest (head) to newest (tail).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BookError::InvalidPriceTick`] when `price` is not on
+    /// the configured tick grid.
+    pub fn orders_at(&self, price: u64) -> Result<OrdersAt<'_>, BookError> {
+        let idx = self.price_to_idx(price)?;
+        let i = idx as usize;
+        Ok(OrdersAt {
+            book: self,
+            head_slot: self.levels.head[i],
+            tail_slot: self.levels.tail[i],
+            remaining: self.levels.count[i] as usize,
+        })
+    }
+
+    fn order_info_at_slot(&self, slot: u32) -> OrderInfo {
+        let s = slot as usize;
+        OrderInfo {
+            order_id: OrderId(self.arena.order_id[s]),
+            participant: ParticipantId(self.arena.participant[s]),
+            side: Side::from_u8(self.arena.side[s]),
+            price: self.price_of_idx(self.arena.price_idx[s]),
+            qty: self.arena.qty[s],
+        }
     }
 
     /// Add an order. The order sweeps the opposite side in price-time
@@ -226,6 +462,48 @@ impl Book {
     /// Returns the number of events written into `events` (one
     /// `Cancelled` event on success).
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronicle_core::{
+    ///     Book, BookConfig, CancelReason, EventBuffer, ExecutionEvent, OrderId, OrderType,
+    ///     ParticipantId, Side, StpPolicy,
+    /// };
+    ///
+    /// let mut book = Book::new(BookConfig {
+    ///     max_orders: 16,
+    ///     grid_len: 640,
+    ///     tick_size: 1,
+    ///     grid_start_tick: 1,
+    ///     default_stp: StpPolicy::CancelIncoming,
+    /// })
+    /// .unwrap();
+    /// let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(8);
+    /// let mut events = EventBuffer::new(&mut storage);
+    /// book.add_order(
+    ///     OrderId(1),
+    ///     ParticipantId(1),
+    ///     Side::Bid,
+    ///     OrderType::Limit,
+    ///     100,
+    ///     10,
+    ///     None,
+    ///     &mut events,
+    /// )
+    /// .unwrap();
+    /// events.clear();
+    /// book.cancel_order(OrderId(1), &mut events).unwrap();
+    /// assert_eq!(
+    ///     events.written(),
+    ///     &[ExecutionEvent::Cancelled {
+    ///         seq: 2,
+    ///         order_id: OrderId(1),
+    ///         reason: CancelReason::Requested,
+    ///     }]
+    /// );
+    /// assert_eq!(book.live_order_count(), 0);
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns [`BookError::OrderNotFound`] with no side effects when
@@ -317,6 +595,40 @@ impl Book {
     /// Returns the number of events written into `events` (one on
     /// success).
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronicle_core::{
+    ///     Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId,
+    ///     Side, StpPolicy,
+    /// };
+    ///
+    /// let mut book = Book::new(BookConfig {
+    ///     max_orders: 16,
+    ///     grid_len: 640,
+    ///     tick_size: 1,
+    ///     grid_start_tick: 1,
+    ///     default_stp: StpPolicy::CancelIncoming,
+    /// })
+    /// .unwrap();
+    /// let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(8);
+    /// let mut events = EventBuffer::new(&mut storage);
+    /// book.add_order(
+    ///     OrderId(1),
+    ///     ParticipantId(1),
+    ///     Side::Bid,
+    ///     OrderType::Limit,
+    ///     100,
+    ///     10,
+    ///     None,
+    ///     &mut events,
+    /// )
+    /// .unwrap();
+    /// events.clear();
+    /// book.amend_order(OrderId(1), 101, 6, &mut events).unwrap();
+    /// assert_eq!(book.best_bid(), Some((101, 6)));
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns [`BookError::OrderNotFound`] when the id is not live,
@@ -400,6 +712,33 @@ impl Book {
     /// Write up to `max_levels` aggregated levels for one side into
     /// `out`, best price first, and return how many were written.
     /// Mutates nothing and allocates nothing.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronicle_core::{
+    ///     Book, BookConfig, DepthLevel, EventBuffer, ExecutionEvent, OrderId, OrderType,
+    ///     ParticipantId, Side, StpPolicy,
+    /// };
+    ///
+    /// let mut book = Book::new(BookConfig {
+    ///     max_orders: 16,
+    ///     grid_len: 640,
+    ///     tick_size: 1,
+    ///     grid_start_tick: 1,
+    ///     default_stp: StpPolicy::CancelIncoming,
+    /// })
+    /// .unwrap();
+    /// let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(8);
+    /// let mut events = EventBuffer::new(&mut storage);
+    /// book.add_order(OrderId(1), ParticipantId(1), Side::Bid, OrderType::Limit, 99, 4, None, &mut events).unwrap();
+    /// book.add_order(OrderId(2), ParticipantId(1), Side::Bid, OrderType::Limit, 100, 6, None, &mut events).unwrap();
+    /// let mut levels = [DepthLevel { price: 0, total_qty: 0, order_count: 0 }; 4];
+    /// let count = book.depth(Side::Bid, 4, &mut levels);
+    /// assert_eq!(count, 2);
+    /// assert_eq!(levels[0], DepthLevel { price: 100, total_qty: 6, order_count: 1 });
+    /// assert_eq!(levels[1], DepthLevel { price: 99, total_qty: 4, order_count: 1 });
+    /// ```
     pub fn depth(&self, side: Side, max_levels: usize, out: &mut [DepthLevel]) -> usize {
         let limit = max_levels.min(out.len());
         let bitmap = match side {
@@ -507,6 +846,10 @@ impl Book {
                 prev = slot;
                 slot = self.arena.next[s];
             }
+            assert!(
+                !(self.config.grid_start_tick == 0 && idx == 0 && count > 0),
+                "level 0 holds {count} live orders when grid_start_tick is 0 (price 0 is invalid)"
+            );
             assert_eq!(
                 self.levels.count[i], count,
                 "level {idx} cached count is wrong"

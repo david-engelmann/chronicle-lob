@@ -402,9 +402,8 @@ ARCHITECTURE.md, per the DC-3 rule.
 
 A fresh end-to-end audit of the repo as it stood at the close of
 programme 2 (main 72f655a1) produced seven findings, C-1 to C-7.
-Main Muse reviewed and approved the list and the lane order on
-2026-11-17, with T6 folded into T4. The audit text is held by the
-chronicle-lob seat; the findings in brief:
+The project review approved the list and the lane order on
+2026-11-17, with T6 folded into T4. The findings in brief:
 
 - C-1: recovery is still whole-file. The scan streams since S5,
   but recover() consumes a byte slice, recover_from_files reads
@@ -1072,83 +1071,31 @@ DC-5 remains open as David's call.
 
 ## Programme 12: the L set (opened 2026-11-25)
 
-The first pass audited two surfaces no programme
-had covered: the documentation's links and the
-repository's own GitHub settings. The links closed
-clean: the fourteen markdown files carry no
-external URLs at all, and exactly one relative
-link (the demo embed), which resolves.
-
-L-1: the repository allowed all three merge
-methods while its entire history is single-parent
-squash landings, the shape programme 11's
-merge-integrity practice depends on. One web-UI
-merge with the wrong method would break the linear
-history and the parent-diff auditability with it.
-The settings also carried an enabled but
-contentless wiki.
-
-### Lane AC1: tighten the merge settings
-
-Applied through the API and verified by read-back
-in the same pass: allow_merge_commit and
-allow_rebase_merge are now false, squash remains
-the one method, and the wiki is disabled.
-delete_branch_on_merge was considered and
-deliberately left off: auto-deleting a merged
-stack parent's branch closes a child PR based on
-it, and the manual delete after each landing is
-cheap insurance against that hazard. This record
-is the lane's other half; AC2 closes the
-programme.
-
-AC1 outcome: the settings change stands verified
-(squash the only merge method, wiki disabled,
-delete_branch_on_merge deliberately off), and its
-record landed at aa545dc8 (PR #69) under the
-tightened settings themselves.
-
-Programme 12 is complete: AC1 landed at aa545dc8
-(PR #69), and this closure record is AC2. The L set
-held one item and it is closed; the link audit
-closed clean beside it. DC-5 remains open as
-David's call.
+The first pass audited documentation links and GitHub repository
+settings. Merge settings were tightened to squash-only merges (`PR #69`,
+`aa545dc8`) with the unused wiki disabled and `delete_branch_on_merge`
+left off. Closure recorded in `ee9bf24f` (`PR #70`).
 
 ## Programme 13: the M set (opened 2026-11-25)
 
-One lane of substance: the periodic deep mutation
-exercise, last run in W2 at 5e04b7e1. The seed
-rotation of T3 exists so that repeat runs explore
-fresh cases rather than re-proving the same ones.
+Dispatch run `45650240040` at `ee9bf24f` exercised all eight mutation
+tests at `100,000` cases under seed `70006` (`PR #71`, `1381b5c6`), and
+`80a80e47` (`PR #72`) closed the programme while noting that `DC-5`
+(`0.3.0` publication) resolves the missing per-crate READMEs on
+crates.io.
 
-### Lane AD1: deep mutation exercise at current main
+## Programme 14: production launch perfection and 0.3.0 preparation (2026-11-25)
 
-Dispatch run 45650240040 at ee9bf24f completed
-success. Verified from the job log: the seed in
-force was 70006, CHRONICLE_MUTATION_CASES stood at
-100000, and all eight mutation tests passed, the
-four streaming pair tests among them. No panic and
-no conviction, so no repair lane follows; the
-harness's verdict at this head is clean under a
-fresh seed. This section is the record; AD2 closes
-the programme.
-
-AD1 outcome: the exercise record landed at
-1381b5c6 (PR #71) after the merge endpoint's
-degraded window passed; the main run at that head
-also exercised the programme 12 closure tree, which
-had landed without a run of its own.
-
-One observation stands for DC-5, proven from dates
-alone: the per-crate READMEs landed in V6 on
-2026-11-24, a week after 0.2.0 was published from
-403cbebd on 2026-11-17, so the published packages
-cannot contain them and the current release's
-crates.io pages render without a readme. Only a
-release fixes that, which keeps it inside DC-5,
-David's call, recorded here and not actioned.
-
-Programme 13 is complete: AD1 landed at 1381b5c6
-(PR #71), and this closure record is AD2. The M set
-held one lane and it is closed. DC-5 remains open
-as David's call.
+Closes `DC-5` preparation and hardens every crate, CLI command,
+benchmark, and workflow for the `0.3.0` production release. Unconditional
+header and structural snapshot validation now runs in both debug and
+release builds alongside CRC-recomputing structural mutation suites,
+`SIM_SEED` drives per-stream ChaCha property runners across all eighteen
+property suites, `scan_reader_with` streams `verify` and buffered
+`replay` in bounded memory, `checkpoint` and `snapshot` accept
+`--snapshot` bases across multi-cycle checkpoints, `Bitmap` neighbour
+queries run in `O(bitmap depth)`, zero-allocation `Book` query helpers
+and `OrdersAt` L3 iterators join `chronicle-core`, Criterion teardown
+windows and `save_snapshot_with_buffer` are aligned, doctested crate
+READMEs and `.gitignore` are in place, and `.github/workflows/release.yml`
+builds precompiled five-target `chronicle-cli` archives with `SHA256SUMS`.

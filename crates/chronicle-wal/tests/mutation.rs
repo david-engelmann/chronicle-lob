@@ -29,32 +29,45 @@
 //! `error_key` below.
 
 use std::io;
+use std::sync::Once;
 
 use chronicle_core::{
-    Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId, Side,
-    StpPolicy,
+    Book, BookConfig, BookError, EventBuffer, ExecutionEvent, LevelState, LiveOrderState, OrderId,
+    OrderType, ParticipantId, Side, SnapshotState, StpPolicy,
 };
 use chronicle_wal::{
-    LogScanner, Recovery, ScanOutcome, SyncPolicy, WalCommand, WalError, WalSink, WalWriter,
-    decode_snapshot, encode_snapshot, recover, recover_from_reader, scan_log, scan_reader,
+    Crc32c, FrameParse, HEADER_LEN, LogScanner, MAX_PAYLOAD_LEN, Recovery, ScanOutcome,
+    SnapshotCorruption, SyncPolicy, WalCommand, WalCorruption, WalError, WalSink, WalWriter,
+    decode_snapshot, encode_frame, encode_snapshot, parse_frame, recover, recover_from_reader,
+    scan_log, scan_reader, snapshot_config,
 };
 
 /// The default seed for the whole harness. The same seeded stream
 /// drives every surface, so a failure reproduces exactly.
 const SEED: u64 = 0xC0FF_EE15_600D_5EED;
 
+static SEED_BANNER: Once = Once::new();
+
 /// The seed in force for this run (programme 3, lane T3). The
-/// `CHRONICLE_MUTATION_SEED` environment variable overrides the
-/// default, and the deep workflow derives a fresh one from its
-/// run number on every dispatch, so successive deep runs explore
-/// new streams instead of re-proving the default one. The seed is
-/// printed in every panic message, so any failure reproduces by
-/// setting the variable to the printed value.
+/// `CHRONICLE_MUTATION_SEED` environment variable overrides
+/// `SIM_SEED`, which in turn overrides the default. The active seed
+/// is printed once per test binary and included in every panic
+/// message, so any failure reproduces by setting the variable to the
+/// printed value.
 fn harness_seed() -> u64 {
-    std::env::var("CHRONICLE_MUTATION_SEED")
+    let seed = std::env::var("CHRONICLE_MUTATION_SEED")
         .ok()
         .and_then(|value| value.parse().ok())
-        .unwrap_or(SEED)
+        .or_else(|| {
+            std::env::var("SIM_SEED")
+                .ok()
+                .and_then(|value| value.parse().ok())
+        })
+        .unwrap_or(SEED);
+    SEED_BANNER.call_once(|| {
+        eprintln!("CHRONICLE_MUTATION_SEED={seed}");
+    });
+    seed
 }
 
 /// Mutation cases per WAL surface. The deep workflow raises the
@@ -638,4 +651,567 @@ fn mutation_harness_streaming_recovery_multi_point_matches_slice() {
         "flip-and-truncate cases must recover their prefix"
     );
     assert!(errors > 0, "corruptions must end in typed errors");
+}
+
+/// Recompute the domain-separated CRC32C of one WAL frame in place
+/// when `frame` is large enough to hold its declared payload.
+fn recompute_single_frame_crc(frame: &mut [u8]) {
+    if frame.len() < HEADER_LEN {
+        return;
+    }
+    let payload_len = u32::from_le_bytes([frame[16], frame[17], frame[18], frame[19]]);
+    if payload_len > MAX_PAYLOAD_LEN {
+        return;
+    }
+    let end = HEADER_LEN + payload_len as usize;
+    if frame.len() < end {
+        return;
+    }
+    let mut crc = Crc32c::new();
+    crc.update(b"chronicle-wal/v1");
+    crc.update(&[0]);
+    crc.update(&frame[0..28]);
+    crc.update(&frame[HEADER_LEN..end]);
+    frame[28..32].copy_from_slice(&crc.finalize().to_le_bytes());
+}
+
+/// Walk `wal` from offset 0 and recompute the stored CRC32C on every
+/// complete frame whose `payload_len` fits inside the remaining slice,
+/// so mutations bypass checksum rejection and reach structural header,
+/// payload, sequence, and replay validation directly.
+fn recompute_wal_crcs(wal: &mut [u8]) {
+    let mut pos = 0usize;
+    while pos + HEADER_LEN <= wal.len() {
+        let payload_len =
+            u32::from_le_bytes([wal[pos + 16], wal[pos + 17], wal[pos + 18], wal[pos + 19]]);
+        if payload_len > MAX_PAYLOAD_LEN {
+            break;
+        }
+        let frame_len = HEADER_LEN + payload_len as usize;
+        if pos + frame_len > wal.len() {
+            break;
+        }
+        recompute_single_frame_crc(&mut wal[pos..pos + frame_len]);
+        pos += frame_len;
+    }
+}
+
+/// Recompute the domain-separated snapshot trailer CRC32C in place,
+/// so header and body mutations bypass checksum rejection and hit
+/// every structural check in `snapshot_config`, `decode_snapshot`,
+/// and `Book::from_snapshot_state`.
+fn recompute_snapshot_crc(snap: &mut [u8]) {
+    if snap.len() < 4 {
+        return;
+    }
+    let body_end = snap.len() - 4;
+    let mut crc = Crc32c::new();
+    crc.update(b"chronicle-snapshot/v1");
+    crc.update(&[0]);
+    crc.update(&snap[..body_end]);
+    snap[body_end..].copy_from_slice(&crc.finalize().to_le_bytes());
+}
+
+/// Exercise every command path (crossing sweep, Fok preflight, amend,
+/// cancel, mass cancel) against a recovered or restored book to prove
+/// it is structurally sound and free of cycles.
+fn exercise_post_restore_replay(book: &mut Book) {
+    book.debug_assert_invariants();
+    let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(128);
+    let follow_ups = [
+        WalCommand::Add {
+            order_id: OrderId(50_001),
+            participant: ParticipantId(9),
+            side: Side::Bid,
+            order_type: OrderType::Limit,
+            stp: None,
+            price: 120,
+            qty: 25,
+        },
+        WalCommand::Add {
+            order_id: OrderId(50_002),
+            participant: ParticipantId(10),
+            side: Side::Ask,
+            order_type: OrderType::Fok,
+            stp: None,
+            price: 80,
+            qty: 5,
+        },
+        WalCommand::Amend {
+            order_id: OrderId(50_001),
+            new_price: 105,
+            new_qty: 10,
+        },
+        WalCommand::Cancel {
+            order_id: OrderId(50_001),
+        },
+        WalCommand::CancelByParticipant {
+            participant: ParticipantId(1),
+        },
+    ];
+    for cmd in &follow_ups {
+        let mut events = EventBuffer::new(&mut storage);
+        let _ = cmd.apply(book, &mut events);
+        storage.clear();
+    }
+    book.debug_assert_invariants();
+}
+
+/// Build a richer snapshot with two resting bids at one level, an ask
+/// on the opposite side, and churned generations/free-list links.
+fn rich_snapshot_bytes() -> Vec<u8> {
+    let mut book = Book::new(config()).expect("book");
+    let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(64);
+    let cmds = [
+        WalCommand::Add {
+            order_id: OrderId(10),
+            participant: ParticipantId(1),
+            side: Side::Bid,
+            order_type: OrderType::Limit,
+            stp: None,
+            price: 100,
+            qty: 8,
+        },
+        WalCommand::Add {
+            order_id: OrderId(11),
+            participant: ParticipantId(2),
+            side: Side::Bid,
+            order_type: OrderType::Limit,
+            stp: None,
+            price: 100,
+            qty: 6,
+        },
+        WalCommand::Add {
+            order_id: OrderId(12),
+            participant: ParticipantId(3),
+            side: Side::Ask,
+            order_type: OrderType::Limit,
+            stp: None,
+            price: 102,
+            qty: 9,
+        },
+        WalCommand::Add {
+            order_id: OrderId(13),
+            participant: ParticipantId(4),
+            side: Side::Ask,
+            order_type: OrderType::Limit,
+            stp: None,
+            price: 105,
+            qty: 4,
+        },
+        WalCommand::Cancel {
+            order_id: OrderId(13),
+        },
+    ];
+    for cmd in &cmds {
+        let mut events = EventBuffer::new(&mut storage);
+        cmd.apply(&mut book, &mut events).expect("apply");
+        storage.clear();
+    }
+    let mut out = Vec::new();
+    encode_snapshot(&book.capture_snapshot_state(), &mut out);
+    out
+}
+
+#[test]
+fn mutation_harness_wal_valid_crc_never_panics() {
+    let mut single_frame = Vec::new();
+    encode_frame(&fixture_commands()[0], 1, &mut single_frame);
+    let (_valid, errors) = run_surface(
+        &single_frame,
+        wal_cases(),
+        "parse_frame valid-crc",
+        |raw| {
+            let mut bytes = raw.to_vec();
+            recompute_single_frame_crc(&mut bytes);
+            match parse_frame(&bytes, 0) {
+                Ok(FrameParse::Frame { command, seq, .. }) => {
+                    let mut book = Book::new(config()).expect("book");
+                    let mut storage = Vec::with_capacity(64);
+                    let mut events = EventBuffer::new(&mut storage);
+                    if seq == 1 && command.apply(&mut book, &mut events).is_ok() {
+                        book.debug_assert_invariants();
+                    }
+                    true
+                }
+                Ok(FrameParse::CrashBoundary { .. }) => true,
+                Err(_) => false,
+            }
+        },
+        mutate_multi,
+    );
+    assert!(errors > 0, "structural frame corruptions must be rejected");
+
+    let (wal, _) = fixture_bytes();
+    for mutate_fn in [mutate as MutateFn, mutate_multi as MutateFn] {
+        let (_valid, errors) = run_surface(
+            &wal,
+            wal_cases(),
+            "recover valid-crc",
+            |raw| {
+                let mut bytes = raw.to_vec();
+                recompute_wal_crcs(&mut bytes);
+                recover(config(), None, &bytes).is_ok_and(|mut rec| {
+                    exercise_post_restore_replay(&mut rec.book);
+                    true
+                })
+            },
+            mutate_fn,
+        );
+        assert!(errors > 0, "structural log corruptions must be rejected");
+    }
+}
+
+#[test]
+fn mutation_harness_snapshot_valid_crc_never_panics() {
+    let snap = rich_snapshot_bytes();
+    for mutate_fn in [mutate as MutateFn, mutate_multi as MutateFn] {
+        let (_valid, errors) = run_surface(
+            &snap,
+            snapshot_cases(),
+            "decode_snapshot + from_snapshot_state + replay valid-crc",
+            |raw| {
+                let mut bytes = raw.to_vec();
+                recompute_snapshot_crc(&mut bytes);
+                if let Ok(inferred) = snapshot_config(&bytes) {
+                    assert!(
+                        inferred.validate().is_ok(),
+                        "snapshot_config accepted an invalid BookConfig: {inferred:?}"
+                    );
+                }
+                decode_snapshot(&bytes, &config()).is_ok_and(|state| {
+                    let mut book = Book::from_snapshot_state(state)
+                        .expect("a snapshot accepted by decode_snapshot must restore cleanly");
+                    exercise_post_restore_replay(&mut book);
+                    true
+                })
+            },
+            mutate_fn,
+        );
+        assert!(
+            errors > 0,
+            "structural snapshot mutations with valid CRC must end in typed errors"
+        );
+    }
+}
+
+#[test]
+fn regression_max_orders_zero_header_rejected() {
+    // Regression (a): a snapshot header declaring max_orders = 0 with
+    // matching byte length and a valid recomputed CRC32C must be
+    // rejected by snapshot_config and decode_snapshot.
+    let grid_len = 64u32;
+    let total_len = 68usize + 20 * (grid_len as usize);
+    let mut bytes = vec![0u8; total_len];
+    bytes[0..4].copy_from_slice(b"CSNP");
+    bytes[4..6].copy_from_slice(&1u16.to_le_bytes());
+    bytes[6..8].copy_from_slice(&64u16.to_le_bytes());
+    bytes[8..16].copy_from_slice(&0u64.to_le_bytes()); // last_included_seq
+    bytes[16..24].copy_from_slice(&1u64.to_le_bytes()); // next_seq
+    bytes[24..28].copy_from_slice(&0u32.to_le_bytes()); // live_count
+    bytes[28..32].copy_from_slice(&0u32.to_le_bytes()); // max_orders = 0!
+    bytes[32..40].copy_from_slice(&1u64.to_le_bytes()); // tick_size
+    bytes[40..48].copy_from_slice(&1u64.to_le_bytes()); // grid_start_tick
+    bytes[48..52].copy_from_slice(&grid_len.to_le_bytes());
+    bytes[52..56].copy_from_slice(&0u32.to_le_bytes()); // default_stp
+    bytes[56..60].copy_from_slice(&u32::MAX.to_le_bytes()); // free_list_head = NIL
+    for i in 0..(grid_len as usize) {
+        let at = 64 + i * 20;
+        bytes[at..at + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        bytes[at + 4..at + 8].copy_from_slice(&u32::MAX.to_le_bytes());
+    }
+    recompute_snapshot_crc(&mut bytes);
+
+    let err = snapshot_config(&bytes).expect_err("max_orders = 0 must fail snapshot_config");
+    assert!(matches!(
+        err,
+        WalError::CorruptSnapshot {
+            detail: SnapshotCorruption::InvalidField {
+                field: "max_orders"
+            }
+        }
+    ));
+
+    let err = decode_snapshot(&bytes, &config()).expect_err("max_orders = 0 must fail decode");
+    assert!(matches!(
+        err,
+        WalError::CorruptSnapshot {
+            detail: SnapshotCorruption::InvalidField {
+                field: "max_orders"
+            }
+        }
+    ));
+}
+
+#[test]
+fn regression_invalid_order_fields_and_links_rejected() {
+    // Regression (b): order_id = 0, qty = 0, and out-of-bounds
+    // prev/next/level links must be rejected with typed errors in both
+    // debug and release builds, via decode_snapshot (with recomputed
+    // CRC32C) and via Book::from_snapshot_state directly.
+    let mut levels = vec![
+        LevelState {
+            head: u32::MAX,
+            tail: u32::MAX,
+            qty: 0,
+            count: 0,
+        };
+        640
+    ];
+    levels[99] = LevelState {
+        head: 0,
+        tail: 0,
+        qty: 10,
+        count: 1,
+    };
+    let mut free_links = vec![u32::MAX; 32];
+    for (i, link) in free_links.iter_mut().enumerate().skip(1) {
+        if i + 1 < 32 {
+            *link = u32::try_from(i + 1).unwrap();
+        }
+    }
+    let valid_state = SnapshotState {
+        config: config(),
+        next_seq: 2,
+        generations: vec![1; 32],
+        free_list_head: 1,
+        free_links,
+        levels,
+        live_orders: vec![LiveOrderState {
+            slot: 0,
+            generation: 1,
+            order_id: OrderId(1),
+            participant: ParticipantId(1),
+            price_idx: 99,
+            qty: 10,
+            side: Side::Ask,
+            prev: u32::MAX,
+            next: u32::MAX,
+        }],
+    };
+    let restored = Book::from_snapshot_state(valid_state.clone()).expect("baseline state is valid");
+    restored.debug_assert_invariants();
+
+    let bad_states: Vec<(&str, SnapshotState)> = vec![
+        ("order_id = 0", {
+            let mut s = valid_state.clone();
+            s.live_orders[0].order_id = OrderId(0);
+            s
+        }),
+        ("qty = 0", {
+            let mut s = valid_state.clone();
+            s.live_orders[0].qty = 0;
+            s.levels[99].qty = 0;
+            s
+        }),
+        ("prev out of bounds", {
+            let mut s = valid_state.clone();
+            s.live_orders[0].prev = 32;
+            s
+        }),
+        ("next out of bounds", {
+            let mut s = valid_state.clone();
+            s.live_orders[0].next = 999;
+            s
+        }),
+        ("level head out of bounds", {
+            let mut s = valid_state.clone();
+            s.levels[99].head = 32;
+            s
+        }),
+        ("level tail out of bounds", {
+            let mut s = valid_state;
+            s.levels[99].tail = 32;
+            s
+        }),
+    ];
+
+    for (label, bad_state) in bad_states {
+        let mut encoded = Vec::new();
+        encode_snapshot(&bad_state, &mut encoded);
+        let decode_err = decode_snapshot(&encoded, &config())
+            .expect_err(&format!("{label}: decode_snapshot must reject"));
+        assert!(
+            matches!(decode_err, WalError::CorruptSnapshot { .. }),
+            "{label}: unexpected decode error {decode_err:?}"
+        );
+        let restore_err = Book::from_snapshot_state(bad_state)
+            .expect_err(&format!("{label}: from_snapshot_state must reject"));
+        assert!(
+            matches!(restore_err, BookError::InvalidSnapshot { .. }),
+            "{label}: unexpected restore error {restore_err:?}"
+        );
+    }
+}
+
+#[test]
+fn regression_self_loop_next_rejected_without_hanging_plan_sweep() {
+    // Regression (c): a live resting order with a self-looping
+    // `next = 0` must be rejected by both decode_snapshot (even with a
+    // valid CRC32C) and Book::from_snapshot_state (even in --release),
+    // so an incoming crossing sweep can never enter an infinite loop
+    // inside plan_sweep.
+    let mut book = Book::new(config()).expect("book");
+    let mut storage = Vec::with_capacity(16);
+    {
+        let mut events = EventBuffer::new(&mut storage);
+        book.add_order(
+            OrderId(1),
+            ParticipantId(2),
+            Side::Ask,
+            OrderType::Limit,
+            100,
+            10,
+            None,
+            &mut events,
+        )
+        .expect("rest ask");
+    }
+    let mut cyclic = book.capture_snapshot_state();
+    assert_eq!(cyclic.live_orders[0].slot, 0);
+    cyclic.live_orders[0].next = 0; // self-loop!
+
+    let mut bytes = Vec::new();
+    encode_snapshot(&cyclic, &mut bytes);
+    let decode_err =
+        decode_snapshot(&bytes, &config()).expect_err("cyclic snapshot must fail decode_snapshot");
+    assert!(matches!(
+        decode_err,
+        WalError::CorruptSnapshot {
+            detail: SnapshotCorruption::InvalidField {
+                field: "level list cycle"
+            }
+        }
+    ));
+
+    let restore_err = Book::from_snapshot_state(cyclic)
+        .expect_err("cyclic snapshot must fail from_snapshot_state in all build profiles");
+    assert!(matches!(restore_err, BookError::InvalidSnapshot { .. }));
+}
+
+#[test]
+fn regression_zero_price_at_grid_start_zero_rejected() {
+    // When grid_start_tick == 0, tick 0 maps to raw price 0, which is
+    // outside the positive price domain (min_price() == tick_size).
+    // Both decode_snapshot (with valid CRC32C) and Book::from_snapshot_state
+    // must reject a live order resting at price_idx == 0.
+    let zero_start_cfg = BookConfig {
+        max_orders: 8,
+        grid_len: 64,
+        tick_size: 5,
+        grid_start_tick: 0,
+        default_stp: StpPolicy::CancelIncoming,
+    };
+    let mut levels = vec![
+        LevelState {
+            head: u32::MAX,
+            tail: u32::MAX,
+            qty: 0,
+            count: 0,
+        };
+        64
+    ];
+    levels[0] = LevelState {
+        head: 0,
+        tail: 0,
+        qty: 10,
+        count: 1,
+    };
+    let mut free_links = vec![u32::MAX; 8];
+    for (i, link) in free_links.iter_mut().enumerate().skip(1) {
+        if i + 1 < 8 {
+            *link = u32::try_from(i + 1).unwrap();
+        }
+    }
+    let bad_state = SnapshotState {
+        config: zero_start_cfg,
+        next_seq: 2,
+        generations: vec![1; 8],
+        free_list_head: 1,
+        free_links,
+        levels,
+        live_orders: vec![LiveOrderState {
+            slot: 0,
+            generation: 1,
+            order_id: OrderId(1),
+            participant: ParticipantId(1),
+            price_idx: 0,
+            qty: 10,
+            side: Side::Bid,
+            prev: u32::MAX,
+            next: u32::MAX,
+        }],
+    };
+
+    let mut bytes = Vec::new();
+    encode_snapshot(&bad_state, &mut bytes);
+    let decode_err = decode_snapshot(&bytes, &zero_start_cfg)
+        .expect_err("price_idx = 0 under grid_start_tick = 0 must fail decode_snapshot");
+    assert!(matches!(
+        decode_err,
+        WalError::CorruptSnapshot {
+            detail: SnapshotCorruption::InvalidField {
+                field: "live record price"
+            }
+        }
+    ));
+
+    let restore_err = Book::from_snapshot_state(bad_state)
+        .expect_err("price_idx = 0 under grid_start_tick = 0 must fail from_snapshot_state");
+    assert!(matches!(restore_err, BookError::InvalidSnapshot { .. }));
+}
+
+#[test]
+fn regression_zero_seq_wal_frame_rejected() {
+    // Valid WAL sequence numbers are 1-based (seq >= 1). A crafted
+    // seq = 0 frame with a valid CRC32C must be rejected as corruption
+    // by parse_frame, scan_log, scan_reader, recover, and
+    // recover_from_reader rather than silently skipped under base_seq = 0.
+    let cmd = WalCommand::Add {
+        order_id: OrderId(1),
+        participant: ParticipantId(1),
+        side: Side::Bid,
+        order_type: OrderType::Limit,
+        stp: None,
+        price: 100,
+        qty: 10,
+    };
+    let mut log = Vec::new();
+    let mut frame = Vec::new();
+    encode_frame(&cmd, 0, &mut frame);
+    log.extend_from_slice(&frame);
+    encode_frame(
+        &WalCommand::Add {
+            order_id: OrderId(2),
+            participant: ParticipantId(1),
+            side: Side::Ask,
+            order_type: OrderType::Limit,
+            stp: None,
+            price: 105,
+            qty: 10,
+        },
+        1,
+        &mut frame,
+    );
+    log.extend_from_slice(&frame);
+
+    for err in [
+        parse_frame(&log, 0).expect_err("parse_frame must reject seq = 0"),
+        scan_log(&log).expect_err("scan_log must reject seq = 0"),
+        scan_reader(io::Cursor::new(&log)).expect_err("scan_reader must reject seq = 0"),
+        recover(config(), None, &log).expect_err("recover must reject seq = 0"),
+        recover_from_reader(config(), None, io::Cursor::new(&log))
+            .expect_err("recover_from_reader must reject seq = 0"),
+    ] {
+        assert!(
+            matches!(
+                err,
+                WalError::CorruptWalRecord {
+                    offset: 0,
+                    detail: WalCorruption::ZeroSequence,
+                }
+            ),
+            "expected ZeroSequence at offset 0, got {err:?}"
+        );
+    }
 }

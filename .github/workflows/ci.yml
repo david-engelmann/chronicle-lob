@@ -298,43 +298,55 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Check core sources presence
+      - name: Check core and wal sources presence
         id: ws
         run: |
-          if [ -d crates/chronicle-core/src ]; then
+          if [ -d crates/chronicle-core/src ] && [ -d crates/chronicle-wal/src ]; then
           echo "present=true" >> "$GITHUB_OUTPUT";
           else echo "present=false" >> "$GITHUB_OUTPUT";
-          echo "No core sources yet (Milestone 0). Skipping."; fi
-      # INV-DET-1: chronicle-core sources must not mention wall clock,
-      # process-seeded randomness, or std hash-map types. The reference
-      # oracle module is excluded by design; it uses BTreeMap only.
-      - name: Scan chronicle-core sources for forbidden tokens
+          echo "Sources missing. Skipping."; fi
+      # INV-DET-1: chronicle-core and chronicle-wal sources must not
+      # mention wall clocks, monotonic timers, process-seeded
+      # randomness, default hashers, or std hash-map types. The
+      # reference oracle module in chronicle-core is excluded by
+      # design; it uses BTreeMap only.
+      - name: Scan chronicle-core and chronicle-wal sources for forbidden tokens
         if: steps.ws.outputs.present == 'true'
         run: |
           python3 - <<'PY'
           import pathlib, sys
-          forbidden = ["SystemTime", "Instant::now", "thread_rng",
-                       "RandomState", "HashMap", "HashSet"]
-          excluded = {"reference_book.rs"}
+          forbidden = [
+              "SystemTime",
+              "Instant",
+              "thread_rng",
+              "RandomState",
+              "DefaultHasher",
+              "HashMap",
+              "HashSet",
+          ]
+          roots = [
+              (pathlib.Path("crates/chronicle-core/src"), {"reference_book.rs"}),
+              (pathlib.Path("crates/chronicle-wal/src"), set()),
+          ]
           hits = []
-          root = pathlib.Path("crates/chronicle-core/src")
-          for path in sorted(root.rglob("*.rs")):
-              if path.name in excluded:
-                  continue
-              text = path.read_text()
-              for token in forbidden:
-                  start = 0
-                  while True:
-                      i = text.find(token, start)
-                      if i < 0:
-                          break
-                      hits.append(f"{path}:{text[:i].count(chr(10)) + 1}: {token}")
-                      start = i + 1
+          for root, excluded in roots:
+              for path in sorted(root.rglob("*.rs")):
+                  if path.name in excluded:
+                      continue
+                  text = path.read_text()
+                  for token in forbidden:
+                      start = 0
+                      while True:
+                          i = text.find(token, start)
+                          if i < 0:
+                              break
+                          hits.append(f"{path}:{text[:i].count(chr(10)) + 1}: {token}")
+                          start = i + 1
           if hits:
-              print("Forbidden determinism tokens found in chronicle-core:")
+              print("Forbidden determinism tokens found in chronicle-core / chronicle-wal:")
               print("\n".join(hits))
               sys.exit(1)
-          print("chronicle-core: no forbidden determinism tokens. OK.")
+          print("chronicle-core and chronicle-wal: no forbidden determinism tokens. OK.")
           PY
 
   package:
@@ -363,17 +375,19 @@ jobs:
           if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
           else echo "present=false" >> "$GITHUB_OUTPUT";
           echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
-      # Roadmap lane R1 (docs/ROADMAP.md): chronicle-core has no
-      # workspace dependencies, so its package verification build
-      # runs in full today. The dependent crates resolve their
-      # workspace dependencies from the registry when packaged, so
-      # until chronicle-core is published they are audited by file
-      # list. The publish sequence in the roadmap extends this job
-      # to full verification builds for them once core is live.
+      # Topological packaging check: chronicle-core has zero workspace
+      # dependencies so its full verification build runs on every push
+      # and PR, including version-bump branches before crates.io
+      # publishes the new version. Downstream crates resolve workspace
+      # dependencies from crates.io during `cargo package` builds, so
+      # CI verifies their packaged file manifests in topological order
+      # (`chronicle-wal`, then `chronicle-lob-cli`) while `publish.yml`
+      # runs full verification builds per crate as each step lands on
+      # crates.io.
       - name: cargo package chronicle-core (verification build)
         if: steps.ws.outputs.present == 'true'
         run: cargo package -p chronicle-core --locked
-      - name: cargo package --list for the dependent crates
+      - name: cargo package --list for downstream crates in topological order
         if: steps.ws.outputs.present == 'true'
         run: |
           cargo package --list -p chronicle-wal --locked

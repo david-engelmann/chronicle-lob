@@ -36,10 +36,14 @@ mod prop_tests;
 #[cfg(test)]
 mod reference_book;
 
-pub use book::{Book, DepthLevel};
+pub use book::{Book, DepthLevel, OrderInfo, OrdersAt};
 pub use config::BookConfig;
 pub use error::BookError;
 pub use events::{CancelReason, EventBuffer, ExecutionEvent};
 pub use types::{
     LevelState, LiveOrderState, OrderId, OrderType, ParticipantId, Side, SnapshotState, StpPolicy,
 };
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

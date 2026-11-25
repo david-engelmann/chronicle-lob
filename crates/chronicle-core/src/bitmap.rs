@@ -138,61 +138,84 @@ impl Bitmap {
         None
     }
 
-    /// The highest active tick index strictly below `exclusive`, by
-    /// leaf-word scan. Used by L2 depth iteration.
+    /// The highest active tick index strictly below `exclusive`, found
+    /// by hierarchical ascent and descent in `O(depth)` word reads.
+    /// Used by L2 depth iteration and opposite-side sweep traversal.
     pub fn highest_below(&self, exclusive: u32) -> Option<u32> {
         if exclusive == 0 {
             return None;
         }
-        let leaf = &self.levels[0];
-        let mut word_idx = (exclusive / 64) as usize;
-        let offset = exclusive % 64;
-        // Bits at or above the offset are out of range; with offset 0
-        // the whole starting word is out of range and the scan simply
-        // steps down from the word below it.
-        let mut candidate = if offset == 0 {
-            0
-        } else {
-            leaf[word_idx] & ((1u64 << offset) - 1)
-        };
-        loop {
-            if candidate != 0 {
-                let idx = word_idx * 64 + candidate.ilog2() as usize;
-                return Some(u32::try_from(idx).unwrap_or(u32::MAX));
-            }
-            if word_idx == 0 {
-                return None;
-            }
-            word_idx -= 1;
-            candidate = leaf[word_idx];
+        if exclusive >= self.grid_len {
+            return self.highest();
         }
+        let pos = (exclusive - 1) as usize;
+        let mut word_idx = pos / 64;
+        let bit = pos % 64;
+        let candidate = self.levels[0][word_idx] & (u64::MAX >> (63 - bit));
+        if candidate != 0 {
+            let idx = word_idx * 64 + candidate.ilog2() as usize;
+            return Some(u32::try_from(idx).unwrap_or(u32::MAX));
+        }
+        for level in 1..self.levels.len() {
+            let parent_bit = word_idx % 64;
+            word_idx /= 64;
+            if parent_bit > 0 {
+                let candidate = self.levels[level][word_idx] & ((1u64 << parent_bit) - 1);
+                if candidate != 0 {
+                    let mut descend_word = word_idx * 64 + candidate.ilog2() as usize;
+                    for d_level in (0..level).rev() {
+                        let w = self.levels[d_level][descend_word];
+                        let max_bit = w.ilog2() as usize;
+                        if d_level == 0 {
+                            return Some(
+                                u32::try_from(descend_word * 64 + max_bit).unwrap_or(u32::MAX),
+                            );
+                        }
+                        descend_word = descend_word * 64 + max_bit;
+                    }
+                }
+            }
+        }
+        None
     }
 
-    /// The lowest active tick index strictly above `exclusive`, by
-    /// leaf-word scan. Used by L2 depth iteration.
+    /// The lowest active tick index strictly above `exclusive`, found
+    /// by hierarchical ascent and descent in `O(depth)` word reads.
+    /// Used by L2 depth iteration and opposite-side sweep traversal.
     pub fn lowest_above(&self, exclusive: u32) -> Option<u32> {
-        let leaf = &self.levels[0];
-        let mut word_idx = (exclusive / 64) as usize;
-        let offset = exclusive % 64;
-        // Bits at or below the offset are out of range; with offset 63
-        // the whole starting word is out of range and the scan simply
-        // steps up from the word above it.
-        let mut candidate = if offset == 63 {
-            0
-        } else {
-            leaf[word_idx] & (!0u64 << (offset + 1))
-        };
-        loop {
-            if candidate != 0 {
-                let idx = word_idx * 64 + candidate.trailing_zeros() as usize;
-                return Some(u32::try_from(idx).unwrap_or(u32::MAX));
-            }
-            word_idx += 1;
-            if word_idx >= leaf.len() {
-                return None;
-            }
-            candidate = leaf[word_idx];
+        let start = exclusive.checked_add(1)?;
+        if start >= self.grid_len {
+            return None;
         }
+        let pos = start as usize;
+        let mut word_idx = pos / 64;
+        let bit = pos % 64;
+        let candidate = self.levels[0][word_idx] & (u64::MAX << bit);
+        if candidate != 0 {
+            let idx = word_idx * 64 + candidate.trailing_zeros() as usize;
+            return Some(u32::try_from(idx).unwrap_or(u32::MAX));
+        }
+        for level in 1..self.levels.len() {
+            let parent_bit = word_idx % 64;
+            word_idx /= 64;
+            if parent_bit < 63 {
+                let candidate = self.levels[level][word_idx] & (u64::MAX << (parent_bit + 1));
+                if candidate != 0 {
+                    let mut descend_word = word_idx * 64 + candidate.trailing_zeros() as usize;
+                    for d_level in (0..level).rev() {
+                        let w = self.levels[d_level][descend_word];
+                        let min_bit = w.trailing_zeros() as usize;
+                        if d_level == 0 {
+                            return Some(
+                                u32::try_from(descend_word * 64 + min_bit).unwrap_or(u32::MAX),
+                            );
+                        }
+                        descend_word = descend_word * 64 + min_bit;
+                    }
+                }
+            }
+        }
+        None
     }
 }
 
@@ -298,5 +321,96 @@ mod tests {
         assert_eq!(bitmap.lowest_above(129), Some(500));
         assert_eq!(bitmap.lowest_above(500), None);
         assert_eq!(bitmap.lowest_above(0), Some(3));
+    }
+
+    #[test]
+    fn bitmap_sparse_max_grid_hierarchy_neighbours() {
+        // Max permitted grid_len = 2^22 (4,194,304 ticks, depth 4:
+        // 65,536 -> 1,024 -> 16 -> 1 words). Sparse bits across word
+        // and subtree boundaries verify every ascent and descent level.
+        let max_grid: u32 = 1 << 22;
+        let mut bitmap = Bitmap::new(max_grid);
+        assert_eq!(bitmap.depth(), 4);
+        assert_eq!(bitmap.highest_below(0), None);
+        assert_eq!(bitmap.highest_below(max_grid), None);
+        assert_eq!(bitmap.lowest_above(0), None);
+        assert_eq!(bitmap.lowest_above(u32::MAX), None);
+
+        let points = [
+            0u32,
+            63,
+            64,
+            4_095,
+            4_096,
+            262_143,
+            262_144,
+            max_grid - 65,
+            max_grid - 1,
+        ];
+        for &p in &points {
+            bitmap.set(p);
+        }
+        assert_summary(&bitmap);
+
+        assert_eq!(bitmap.highest_below(0), None);
+        assert_eq!(bitmap.highest_below(1), Some(0));
+        assert_eq!(bitmap.highest_below(64), Some(63));
+        assert_eq!(bitmap.highest_below(4_095), Some(64));
+        assert_eq!(bitmap.highest_below(4_096), Some(4_095));
+        assert_eq!(bitmap.highest_below(262_144), Some(262_143));
+        assert_eq!(bitmap.highest_below(max_grid - 1), Some(max_grid - 65));
+        assert_eq!(bitmap.highest_below(max_grid), Some(max_grid - 1));
+        assert_eq!(bitmap.highest_below(u32::MAX), Some(max_grid - 1));
+
+        assert_eq!(bitmap.lowest_above(0), Some(63));
+        assert_eq!(bitmap.lowest_above(63), Some(64));
+        assert_eq!(bitmap.lowest_above(64), Some(4_095));
+        assert_eq!(bitmap.lowest_above(4_095), Some(4_096));
+        assert_eq!(bitmap.lowest_above(4_096), Some(262_143));
+        assert_eq!(bitmap.lowest_above(262_143), Some(262_144));
+        assert_eq!(bitmap.lowest_above(262_144), Some(max_grid - 65));
+        assert_eq!(bitmap.lowest_above(max_grid - 65), Some(max_grid - 1));
+        assert_eq!(bitmap.lowest_above(max_grid - 1), None);
+    }
+
+    #[test]
+    fn prop_bitmap_neighbours_match_oracle() {
+        use std::collections::BTreeSet;
+        use std::ops::Bound;
+
+        let grid_len = 8_192u32; // 3-level hierarchy (128 -> 2 -> 1 words)
+        crate::prop_tests::run_seeded_proptest(
+            "prop_bitmap_neighbours_match_oracle",
+            (
+                proptest::collection::vec((0u32..grid_len, proptest::bool::ANY), 0..200),
+                proptest::collection::vec(0u32..=grid_len, 1..40),
+            ),
+            |(mutations, queries)| {
+                let mut bitmap = Bitmap::new(grid_len);
+                let mut oracle = BTreeSet::new();
+                for (idx, active) in mutations {
+                    if active {
+                        bitmap.set(idx);
+                        oracle.insert(idx);
+                    } else {
+                        bitmap.clear(idx);
+                        oracle.remove(&idx);
+                    }
+                }
+                assert_summary(&bitmap);
+                proptest::prop_assert_eq!(bitmap.highest(), oracle.iter().next_back().copied());
+                proptest::prop_assert_eq!(bitmap.lowest(), oracle.iter().next().copied());
+                for q in queries {
+                    let expect_below = oracle.range(..q).next_back().copied();
+                    let expect_above = oracle
+                        .range((Bound::Excluded(q), Bound::Unbounded))
+                        .next()
+                        .copied();
+                    proptest::prop_assert_eq!(bitmap.highest_below(q), expect_below);
+                    proptest::prop_assert_eq!(bitmap.lowest_above(q), expect_above);
+                }
+                Ok(())
+            },
+        );
     }
 }

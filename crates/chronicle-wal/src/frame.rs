@@ -239,9 +239,9 @@ pub enum FrameParse {
 /// - A complete header with a short payload is a torn write and a
 ///   clean crash boundary, once the header itself validates.
 /// - A complete header with an invalid field (version, header
-///   length, unknown kind, payload length over the cap or off its
-///   kind's fixed width, any reserved field nonzero) is corruption
-///   at `offset`.
+///   length, zero sequence number, unknown kind, payload length over
+///   the cap or off its kind's fixed width, any reserved field
+///   nonzero) is corruption at `offset`.
 /// - A complete frame whose checksum does not match is corruption
 ///   at `offset`, never a crash boundary.
 ///
@@ -270,6 +270,10 @@ pub fn parse_frame(bytes: &[u8], offset: u64) -> Result<FrameParse, WalError> {
             offset,
             WalCorruption::BadHeaderLen { found: header_len },
         ));
+    }
+    let seq = read_u64(header, 8);
+    if seq == 0 {
+        return Err(corrupt(offset, WalCorruption::ZeroSequence));
     }
     let payload_len = read_u32(header, 16);
     if payload_len > MAX_PAYLOAD_LEN {
@@ -336,7 +340,6 @@ pub fn parse_frame(bytes: &[u8], offset: u64) -> Result<FrameParse, WalError> {
             },
         ));
     }
-    let seq = read_u64(header, 8);
     let command = decode_payload(kind, payload, offset)?;
     Ok(FrameParse::Frame {
         seq,

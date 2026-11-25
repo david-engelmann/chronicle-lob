@@ -1,10 +1,12 @@
-# DECISIONS.md (LOCKED by David 2026-11-12 via APPROVE DEFAULTS)
+# Decisions
 
-- Q1 GitHub owner / namespace: david-engelmann (David's primary personal GitHub account).
-- Q2 Repository visibility: public from creation.
-- Q3 License: MIT OR Apache-2.0 (dual licensed).
-- Q4 Rust toolchain and edition: Rust 2024 edition, latest stable toolchain pinned via rust-toolchain.toml, Cargo.lock committed.
-- Q5 Zero-dependency core rule: YES. chronicle-core is strictly std-only. External crates (crc32fast, sha2, serde_json, clap, criterion, proptest) are restricted to I/O adapters, CLIs, benchmarks, and dev-dependencies.
-- Q6 CI seed stress volume: 1,000 seeds per PR, 10,000 seeds on main (PROPTEST_CASES and SIM_SEED).
-- Q7 Formal invariant traceability matrix: YES. docs/INVARIANTS.md maps every formal safety, durability, and latency invariant 1-to-1 to the exact property tests, fault oracles, or benchmarks enforcing it.
-- Q8 Sub-chat execution cadence: parallel. Your sibling chats (simraft-kv, verirun) run concurrently; you own chronicle-lob only.
+Locked by David on 2026-11-12. Any change to a decision in this file needs an explicit ruling from the project owner.
+
+- Q1 GitHub owner and namespace is `david-engelmann` on GitHub.
+- Q2 Repository visibility is public from creation.
+- Q3 License is dual `MIT OR Apache-2.0`.
+- Q4 Rust toolchain and edition use Rust 2024 edition with a pinned stable toolchain in `rust-toolchain.toml` and `Cargo.lock` committed.
+- Q5 Zero-dependency core rule holds strictly. `chronicle-core` uses the Rust standard library only. External crates (`serde_json`, `clap`, `criterion`, and `proptest`) are restricted to the CLI, benchmarks, and dev-dependencies.
+- Q6 CI seed stress volume runs 1,000 seeds per pull request and 10,000 seeds on `main` through `PROPTEST_CASES` and `SIM_SEED`.
+- Q7 Formal invariant traceability matrix in `docs/INVARIANTS.md` maps every formal safety, durability, determinism, and latency invariant one-to-one to the property tests, fault oracles, or benchmarks enforcing it.
+- Q8 Repository scope is isolated to `chronicle-lob` with all changes gated by `chronicle-lob` CI.

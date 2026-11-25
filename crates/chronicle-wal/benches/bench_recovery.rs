@@ -12,7 +12,7 @@ use std::hint::black_box;
 use std::io;
 
 use chronicle_core::{BookConfig, OrderId, OrderType, ParticipantId, Side, StpPolicy};
-use chronicle_wal::{SyncPolicy, WalCommand, WalSink, WalWriter, recover};
+use chronicle_wal::{SyncPolicy, WalCommand, WalSink, WalWriter, recover, recover_from_reader};
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 
 /// A sink that collects the encoded log in memory.
@@ -69,7 +69,22 @@ fn bench_recovery(c: &mut Criterion) {
         u64::try_from(bytes.len()).expect("log length fits u64"),
     ));
     group.bench_function("recover_5000_frames", |b| {
-        b.iter(|| black_box(recover(bench_config(), None, &bytes)));
+        b.iter(|| {
+            black_box(recover(
+                black_box(bench_config()),
+                black_box(None),
+                black_box(&bytes),
+            ))
+        });
+    });
+    group.bench_function("recover_from_reader_5000_frames", |b| {
+        b.iter(|| {
+            black_box(recover_from_reader(
+                black_box(bench_config()),
+                black_box(None),
+                io::Cursor::new(black_box(&bytes)),
+            ))
+        });
     });
     group.finish();
 }

@@ -5,145 +5,99 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
-### Added
+## [0.3.0] - 2026-11-25
 
-- The CLI checkpoint subcommand. It recovers a book from a log,
-  writes a snapshot, verifies the snapshot by loading it back,
-  and only then archives the log under the sequence the snapshot
-  covers, bounding a long-running log's growth. The loop and its
-  safety order are recorded in ARCHITECTURE.md section 10.6
-  (programme 3, lane T5).
-- Mutation coverage of the streaming decoders. Every seeded
-  mutation also runs through the streaming scanner at several
-  chunk sizes, through scan_reader, and through streaming
-  recovery, and the streaming verdicts and outcomes must match
-  the slice forms exactly (programme 4, lane U1).
-- A README for each crate, stating what the crate is, what it
-  does, and how it is used, so the crates.io pages render a
-  readme for chronicle-core, chronicle-wal, and
-  chronicle-lob-cli (programme 5, lane V6).
-- The wal recovery example now runs the checkpoint composition
-  end to end on a copy of its session log: stream-recover,
-  snapshot, verify by loading back, archive the covered log,
-  start a fresh log, and recover across the seam, with the
-  output pinned for CI (programme 4, lane U5).
+The third public release. Snapshot decoding and restore now enforce
+every structural invariant unconditionally across build profiles,
+property and allocation runners honour `SIM_SEED`, CLI verification
+and replay stream in bounded `O(1)` memory with multi-cycle
+checkpointing, active-price bitmaps traverse sparse grids in
+`O(depth)`, and the core book gains zero-allocation inspection
+helpers.
 
-### Added
+### Security
 
-- docs/ROADMAP.md records the programme 5 lane V5 cache
-  medians (six warm runs per event type) with the
-  fleet-template verdict, and closes programme 5.
-- The README carries an animated demo of the wal_recovery
-  worked example (docs/media/demo.gif, with a still poster
-  frame), produced under the Stageshow boundary as demo
-  material; every line shown is the example's real,
-  CI-pinned output (programme 5, lane V3).
-
-### Added
-
-- docs/ROADMAP.md closes programme 13: the deep
-  mutation record is landed at 1381b5c6 (PR #71),
-  with a crates.io readme observation recorded
-  for DC-5.
-- The deep mutation exercise ran clean at main
-  ee9bf24f under fresh seed 70006, all eight
-  mutation tests passing at 100,000 cases per
-  surface (programme 13, lane AD1).
-- docs/ROADMAP.md closes programme 12: the
-  merge-settings tightening is recorded at
-  aa545dc8 (PR #69).
-- Repository settings tightened to squash-only
-  merges with the unused wiki disabled, verified
-  by API read-back (programme 12, lane AC1).
-- docs/ROADMAP.md closes programme 11: the
-  merge-integrity sweep is recorded at 644f3d55
-  (PR #67).
-- docs/ROADMAP.md opens programme 11 with the
-  merge-integrity sweep: every squash merge from
-  programme 7 onward carries exactly its intended
-  files, the repaired Y1 revert excepted (lane AB1).
-- docs/ROADMAP.md closes programme 10: the reverted
-  action pins are restored at 502404d8 (PR #65).
-- The actions/checkout v7 and actions/upload-artifact
-  v7 pins from PRs #55 and #56 are restored; lane Y1's
-  stale-base tree had silently reverted them
-  (programme 10, lane AA1).
-- docs/ROADMAP.md closes programme 9: the criterion
-  0.8 performance pass landed at a84c491c (PR #63).
-- docs/PERFORMANCE.md records a full measurement pass
-  under criterion 0.8.2 (programme 9, lane Z1; bench
-  dispatch run 45601655307 at bcc3f1c5).
-- docs/ROADMAP.md closes programme 8: the criterion
-  0.8 migration landed at 5202b926 (PR #61) and the
-  cache v6 re-baseline at 817b61df (PR #53), verdict
-  keep v6 on the sampled evidence.
-- The benchmark targets move to criterion 0.8.2, with
-  black_box imported from std::hint as criterion 0.8
-  requires (programme 8, lane Y1; supersedes PR #54).
-- docs/ROADMAP.md closes programme 7, with X1 at
-  f6e6505f, the X2 record at baacc715, X3 at e0e0af81,
-  and the first dependabot queue worked (four bumps
-  landed, two held with reasons stated).
-- A pull request template carrying the review-readiness
-  block and a bug-report issue template asking for the
-  seed and command stream a reproduction needs
-  (programme 7, lane X3).
-- GitHub Releases now exist for v0.1.0 and v0.2.0, with
-  notes drawn from their CHANGELOG sections
-  (programme 7, lane X2).
-- .github/dependabot.yml configures weekly version
-  updates for the cargo and github-actions ecosystems,
-  minor and patch grouped (programme 7, lane X1).
-- docs/ROADMAP.md closes programme 6, with W1 at
-  5e04b7e1, the W2 record at 9dca673c, and W3 at fa5ffbee.
-- SECURITY.md states the supported versions, the private
-  reporting route (GitHub private vulnerability reporting,
-  now enabled on the repo), and the decoder scope
+- `snapshot_config` and `decode_snapshot` now validate `BookConfig`
+  in the snapshot header alongside positive `order_id` and `qty`,
+  in-range neighbour links, unique order identifiers, symmetric
+  acyclic level lists, exact per-level counts and quantities, single
+  side per level, live-order reachability, and an uncrossed book.
+- `Book::from_snapshot_state` now validates every structural
+  invariant unconditionally in both debug and release builds before
+  any indexing, returning `BookError::InvalidSnapshot` so untrusted
+  `SnapshotState` inputs can never panic or construct a cyclic book
+  that hangs `plan_sweep`.
+- `encode_snapshot` saturates `last_included_seq` when `next_seq` is
+  zero instead of panicking, and `mutation.rs` adds CRC-recomputing
+  structural mutation harnesses and explicit regressions for zero
+  `max_orders`, invalid live-order fields, and self-loop links.
+- `SECURITY.md` states the supported versions, the private GitHub
+  vulnerability reporting route, and the untrusted decoder scope
   (programme 6, lane W3).
+
+### Added
+
+- Zero-allocation order and level inspection helpers on `Book`
+  (`OrderInfo`, `get_order`, `contains_order`, `spread`, `level_at`,
+  `orders_at` yielding a double-ended exact-size `OrdersAt` FIFO
+  iterator, `free_order_count`, and compact `Debug`), grid price
+  helpers `BookConfig::min_price` and `BookConfig::max_price`,
+  `EventBuffer::clear`, and `#[derive(Debug)]` on `Recovery`.
+- True bounded-memory WAL streaming via `scan_reader_with` and
+  `ScanReport` (~8 KiB per-chunk scratch) plus `save_snapshot_with_buffer`
+  in `chronicle-wal` so repeated snapshot saves reuse one caller
+  buffer without heap growth (`INV-ALLOC-3`).
+- Multi-cycle `--snapshot` support on `chronicle-cli checkpoint` and
+  `chronicle-cli snapshot`, supporting atomic in-place `--snapshot`
+  to `--out` updates across successive log segments.
+- The CLI `checkpoint` subcommand, recovering a book from a log,
+  writing and verifying a snapshot, and archiving the covered log
+  under its sequence number (programme 3, lane T5).
+- Tag-triggered `.github/workflows/release.yml` building precompiled
+  Linux, macOS, and Windows `chronicle-cli` tarballs and
+  `SHA256SUMS`, paired with `[package.metadata.binstall]` metadata
+  in `chronicle-lob-cli`.
+- Per-crate `README.md` files wired as doctests in `chronicle-core`
+  and `chronicle-wal`, method doctests across core and WAL entry
+  points, root `.gitignore`, `.github/dependabot.yml`, and pull
+  request and bug report templates (programmes 5 and 7).
+- Animated `wal_recovery` demo in `README.md` (`docs/media/demo.gif`)
+  and end-to-end checkpoint act in the `wal_recovery` example
+  (programmes 4 and 5).
+- Mutation coverage of the streaming decoders across chunk sizes,
+  `scan_reader`, and `recover_from_reader` against their slice forms
+  (programme 4, lane U1).
 
 ### Changed
 
-- The deep mutation exercise ran at the current main head
-  (run 45534405839, seed 70005, all eight tests passed at
-  100,000 cases per surface), recorded in docs/ROADMAP.md
-  (programme 6, lane W2).
-- ARCHITECTURE.md section 14 names the cache rollout to
-  the dispatch workflows (programme 6, lane W1).
-- docs/ROADMAP.md records the programme 5 lane V4 audit
-  outcome: the INVARIANTS traceability matrix was
-  cross-checked against the tree (54 rows, 120 enforcement
-  names) and is sound, with no repairs required.
-- ARCHITECTURE.md section 14 describes the CI cache step and
-  the weekly published-crate verification, and docs/ROADMAP.md
-  opens programme 5 (programme 5, lane V1).
-- The three compiling dispatch workflows (bench, mutation-deep,
-  publish) cache the cargo registry and the target directory
-  with the same pinned cache step as CI, the bench family for
-  the two release-profile workflows and the package family for
-  publish (programme 5, lane V2).
-- CI caches the cargo registry and the target directory in
-  the ten compiling jobs, keyed by operating system, job
-  family, and the lockfile and toolchain hashes, with a
-  three-level restore fallback (Rust CI cache pilot).
-- CONTRIBUTING.md describes the landing route that exists
-  (branch, hosted gate green on the exact head, squash merge
-  with the merged tree verified identical to the green head)
-  and states the rule that every landing lane adds its
-  changelog entry in the same commit (programme 4, lane U4).
-- Performance figures refreshed. docs/PERFORMANCE.md records a
-  full measurement pass on the current code, the first since
-  the streaming rebuild (programme 4, lane U2).
-- The published-crate verification now also runs weekly on a
-  schedule, so a toolchain or registry change that breaks
-  stranger consumption surfaces on its own (programme 4, lane
-  U3).
-- Documentation currency. ARCHITECTURE.md section 14 now
-  describes the CI that exists, all fifteen jobs and the four
-  dispatch workflows, with the macOS test leg's cancellation
-  remedy recorded. The README states the published state, the
-  streaming reads and recovery, and the platform coverage, and
-  no longer says the crates are unpublished (programme 3, lane
-  T4).
+- All 18 `proptest` properties across `chronicle-core` and
+  `chronicle-wal` plus `alloc_proof` now derive deterministic seeds
+  from `SIM_SEED`, honour `PROPTEST_CASES`, and print the active seed
+  once per test binary (`INV-DET-1`, `INV-DET-2`).
+- `Bitmap::highest_below` and `Bitmap::lowest_above` now ascend and
+  descend the bitmap hierarchy in `O(bitmap depth)` word reads
+  instead of scanning leaf words linearly.
+- `chronicle-cli verify` and `chronicle-cli replay` now stream
+  through `scan_reader_with` in `O(1)` memory, `replay` writes
+  directly through `BufWriter<StdoutLock>` without per-event `String`
+  allocations and exits cleanly on `BrokenPipe`, and sequence
+  stepping uses `checked_add(1)`.
+- Fault-injection hooks `SaveStep` and `save_snapshot_with_hook` are
+  marked `#[doc(hidden)]`, and `wal_recovery` cleans up all temporary
+  files in a dedicated temp directory before exiting.
+- Criterion harnesses in `bench_depth`, `bench_match_sweep`,
+  `bench_snapshot`, `bench_recovery`, `bench_add_cancel_best`, and
+  `bench_amend` now exclude book drop and buffer reallocation from
+  timed iterations, benchmark `recover_from_reader` alongside
+  `recover`, and wrap inputs and outputs in `std::hint::black_box`
+  under Criterion 0.8.2 (programmes 8 and 9).
+- CI `determinism-gate` now scans both `chronicle-core/src` and
+  `chronicle-wal/src` for `SystemTime`, `Instant`, `thread_rng`,
+  `RandomState`, `DefaultHasher`, `HashMap`, and `HashSet`.
+- CI and dispatch workflows cache the Cargo registry and target
+  directory under pinned `actions/cache` v6.1.0, `actions/checkout`
+  v7, and `actions/upload-artifact` v7, and `verify-published.yml`
+  runs weekly on a schedule (programmes 4 through 11).
 
 ## [0.2.0] - 2026-11-17
 

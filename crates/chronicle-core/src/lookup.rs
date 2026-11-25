@@ -210,33 +210,36 @@ mod tests {
         assert_eq!(table.len(), 0);
     }
 
-    proptest::proptest! {
-        /// INV-LOOKUP-2: after any insert and delete sequence, every
-        /// remaining key is findable from its home bucket without
-        /// crossing an empty bucket, and contents equal the oracle.
-        /// The small id range forces dense probe clusters, which is
-        /// exactly where backward-shift deletion earns its keep.
-        #[test]
-        fn prop_lookup_backward_shift_reachability(
-            ops in proptest::collection::vec((1u64..60, proptest::bool::ANY), 0..300)
-        ) {
-            let mut table = Lookup::new(64);
-            let mut oracle: BTreeMap<u64, (u32, u32)> = BTreeMap::new();
-            for (id, is_insert) in ops {
-                if is_insert {
-                    if !oracle.contains_key(&id) && oracle.len() < table.load_cap() {
-                        table.insert(id, 5, 9).expect("insert under cap");
-                        oracle.insert(id, (5, 9));
+    /// INV-LOOKUP-2: after any insert and delete sequence, every
+    /// remaining key is findable from its home bucket without
+    /// crossing an empty bucket, and contents equal the oracle.
+    /// The small id range forces dense probe clusters, which is
+    /// exactly where backward-shift deletion earns its keep.
+    #[test]
+    fn prop_lookup_backward_shift_reachability() {
+        crate::prop_tests::run_seeded_proptest(
+            "prop_lookup_backward_shift_reachability",
+            proptest::collection::vec((1u64..60, proptest::bool::ANY), 0..300),
+            |ops| {
+                let mut table = Lookup::new(64);
+                let mut oracle: BTreeMap<u64, (u32, u32)> = BTreeMap::new();
+                for (id, is_insert) in ops {
+                    if is_insert {
+                        if !oracle.contains_key(&id) && oracle.len() < table.load_cap() {
+                            table.insert(id, 5, 9).expect("insert under cap");
+                            oracle.insert(id, (5, 9));
+                        }
+                    } else {
+                        let expected = oracle.remove(&id);
+                        proptest::prop_assert_eq!(table.remove(id), expected);
                     }
-                } else {
-                    let expected = oracle.remove(&id);
-                    proptest::prop_assert_eq!(table.remove(id), expected);
+                    for (k, v) in &oracle {
+                        proptest::prop_assert_eq!(table.get(*k), Some(*v));
+                    }
+                    proptest::prop_assert_eq!(table.len(), oracle.len());
                 }
-                for (k, v) in &oracle {
-                    proptest::prop_assert_eq!(table.get(*k), Some(*v));
-                }
-                proptest::prop_assert_eq!(table.len(), oracle.len());
-            }
-        }
+                Ok(())
+            },
+        );
     }
 }

@@ -44,7 +44,8 @@ diffed in CI on every change.
   orders, under a self-trade prevention policy chosen per order.
 - Reports every outcome as a typed event (accepted, trade, filled,
   cancelled, expired, amended) carrying a sequence number, and answers
-  best-price and depth queries for display or downstream use.
+  zero-allocation order, spread, level, and depth queries for display
+  or downstream use.
 - Rejects bad commands with typed errors and no side effects. A
   rejected command changes nothing, writes no events, and does not
   advance the sequence number.
@@ -65,12 +66,12 @@ The project was built in four milestones, and all four have landed.
 - Milestone 4 has landed. A command line tool for replaying and
   benchmarking a book, plus the final performance proof work.
 
-All three crates are published on crates.io, at version 0.2.0
-today. The write-ahead log reads and recovery run in a streaming
-fashion, so a log larger than memory can be verified, replayed,
-and recovered in bounded memory. Continuous integration runs
-the test and examples suites on Linux, macOS, and Windows, so
-every supported platform is exercised on every change.
+All three crates are at version 0.3.0. Write-ahead log verification,
+replay, and recovery stream in bounded memory (~8 KiB), so logs much
+larger than RAM can be verified, replayed, and checkpointed across
+successive cycles. Continuous integration runs the test and examples
+suites on Linux, macOS, and Windows, so every supported platform is
+exercised on every change.
 
 ## A short example
 
@@ -137,12 +138,12 @@ the engine writes. It has five subcommands.
   event the commands produce, in order.
 - `verify` checks a log and snapshot pair and reports whether the
   sequence numbers and checksums are healthy.
-- `snapshot` replays a log and writes a snapshot of the book it
-  rebuilds.
-- `checkpoint` replays a log, writes a snapshot, verifies the
-  snapshot by loading it back, and only then archives the log
-  under the sequence the snapshot covers, so a long-running log
-  stays bounded.
+- `snapshot` replays a log on top of an optional base snapshot and
+  writes an atomic snapshot of the rebuilt book.
+- `checkpoint` replays a log on top of an optional base snapshot,
+  writes a new snapshot, verifies it by loading it back, and only then
+  archives the log under the sequence the snapshot covers, so a
+  long-running log stays bounded across repeated checkpoints.
 - `bench` runs a seeded synthetic load against a fresh book and
   prints a summary, as plain text or as JSON with `--json`.
 
@@ -158,15 +159,17 @@ chronicle-cli bench --ops 100000 --seed 42 --json
 
 ### A worked example
 
-The chronicle-wal example writes a five-command session to
-`session.wal` and takes a snapshot halfway through it.
+The chronicle-wal example runs a five-command session in a clean
+temporary directory, takes a snapshot halfway through, recovers from
+the pair, and exercises a full checkpoint cycle.
 
 ```sh
 cargo run -p chronicle-wal --example wal_recovery
 ```
 
-The pair it writes is exactly the session the command line tests
-drive, so the tool's answers below are pinned by the test suite.
+Given a `session.wal` and `session.snapshot` pair from that five-command
+session, `chronicle-cli` inspects and replays the tail with output
+pinned by the test suite.
 
 ```sh
 chronicle-cli verify --wal session.wal --snapshot session.snapshot

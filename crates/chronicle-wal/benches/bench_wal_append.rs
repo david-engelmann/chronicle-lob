@@ -53,7 +53,7 @@ fn bench_wal_append(c: &mut Criterion) {
                 price: 100,
                 qty: 1,
             };
-            black_box(writer.append(&command, seq))
+            black_box(writer.append(black_box(&command), black_box(seq)))
         });
     });
     group.finish();

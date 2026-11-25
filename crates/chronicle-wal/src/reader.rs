@@ -6,10 +6,11 @@
 //! exactly the previous sequence plus one. Recovery adds the
 //! snapshot seam check on top of this (section 10.4).
 //!
-//! The scan comes in three forms over the one decision table: a
+//! The scan comes in four forms over the one decision table: a
 //! whole-slice scan ([`scan_log`]), a streaming scanner fed in
-//! chunks ([`LogScanner`]), and a reader-driven scan ([`scan_reader`])
-//! for logs too large to hold in memory (programme 2, lane S5).
+//! chunks ([`LogScanner`]), a collecting reader helper ([`scan_reader`]),
+//! and a true bounded-memory visitor ([`scan_reader_with`]) for logs
+//! too large to hold in memory.
 
 use std::io::Read;
 use std::path::Path;
@@ -33,6 +34,20 @@ pub struct ScannedFrame {
 pub struct ScanOutcome {
     /// Every complete, valid frame, in log order.
     pub frames: Vec<ScannedFrame>,
+    /// Trailing bytes discarded as a torn crash tail (section 9.5).
+    /// Zero for a log that ends exactly on a frame boundary.
+    pub discarded_trailing_bytes: usize,
+}
+
+/// Summary counts returned by [`scan_reader_with`] after streaming a
+/// log in bounded memory.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScanReport {
+    /// Complete, valid frames delivered to the caller callback.
+    pub frame_count: u64,
+    /// Sequence number of the last complete frame, or `None` when the
+    /// log contained no complete frames.
+    pub last_seq: Option<u64>,
     /// Trailing bytes discarded as a torn crash tail (section 9.5).
     /// Zero for a log that ends exactly on a frame boundary.
     pub discarded_trailing_bytes: usize,
@@ -62,7 +77,7 @@ pub fn scan_log(bytes: &[u8]) -> Result<ScanOutcome, WalError> {
                     && previous.checked_add(1) != Some(seq)
                 {
                     return Err(WalError::WalSequenceGap {
-                        expected: previous.wrapping_add(1),
+                        expected: previous.saturating_add(1),
                         found: seq,
                         offset,
                     });
@@ -172,7 +187,7 @@ impl LogScanner {
                         && previous.checked_add(1) != Some(seq)
                     {
                         return Err(WalError::WalSequenceGap {
-                            expected: previous.wrapping_add(1),
+                            expected: previous.saturating_add(1),
                             found: seq,
                             offset,
                         });
@@ -200,31 +215,116 @@ impl LogScanner {
     }
 }
 
-/// Scan a log from any byte reader, in bounded memory: the input
-/// is consumed in fixed-size chunks through a [`LogScanner`], so
-/// only the decoded frames accumulate.
+/// Stream a log from any byte reader in bounded `O(1)` memory (~8 KiB),
+/// invoking `on_frame` for each complete, valid frame in log order.
+///
+/// Unlike [`scan_reader`], which collects every decoded [`ScannedFrame`]
+/// into a `Vec`, `scan_reader_with` drains its per-chunk scratch buffer
+/// after each 8 KiB read so multi-gigabyte logs run in fixed memory.
+///
+/// # Examples
+///
+/// ```
+/// use std::io::Cursor;
+///
+/// use chronicle_core::{OrderId, OrderType, ParticipantId, Side};
+/// use chronicle_wal::{WalCommand, encode_frame, scan_reader_with};
+///
+/// let mut log = Vec::new();
+/// let mut frame = Vec::new();
+/// for seq in 1..=3u64 {
+///     let cmd = WalCommand::Add {
+///         order_id: OrderId(seq),
+///         participant: ParticipantId(1),
+///         side: Side::Bid,
+///         order_type: OrderType::Limit,
+///         stp: None,
+///         price: 100,
+///         qty: 5,
+///     };
+///     encode_frame(&cmd, seq, &mut frame);
+///     log.extend_from_slice(&frame);
+/// }
+///
+/// let mut seen = Vec::new();
+/// let report = scan_reader_with(Cursor::new(&log), |scanned| {
+///     seen.push(scanned.seq);
+///     Ok(())
+/// })
+/// .unwrap();
+/// assert_eq!(seen, vec![1, 2, 3]);
+/// assert_eq!(report.frame_count, 3);
+/// assert_eq!(report.last_seq, Some(3));
+/// assert_eq!(report.discarded_trailing_bytes, 0);
+/// ```
+///
+/// # Errors
+///
+/// Returns [`WalError::Io`] when the reader fails, the scanning
+/// errors of [`scan_log`], or the first [`WalError`] returned by
+/// `on_frame`.
+pub fn scan_reader_with<R, F>(mut reader: R, mut on_frame: F) -> Result<ScanReport, WalError>
+where
+    R: Read,
+    F: FnMut(ScannedFrame) -> Result<(), WalError>,
+{
+    let mut scanner = LogScanner::new();
+    let mut frames = Vec::new();
+    let mut chunk = [0u8; 8192];
+    let mut frame_count = 0u64;
+    let mut last_seq = None;
+    loop {
+        let read = match reader.read(&mut chunk) {
+            Ok(n) => n,
+            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(WalError::io("read WAL stream", e)),
+        };
+        if read == 0 {
+            break;
+        }
+        scanner.feed(&chunk[..read], &mut frames)?;
+        for &frame in &frames {
+            last_seq = Some(frame.seq);
+            frame_count += 1;
+            on_frame(frame)?;
+        }
+        frames.clear();
+    }
+    let discarded_trailing_bytes = scanner.finish(&mut frames)?;
+    for &frame in &frames {
+        last_seq = Some(frame.seq);
+        frame_count += 1;
+        on_frame(frame)?;
+    }
+    Ok(ScanReport {
+        frame_count,
+        last_seq,
+        discarded_trailing_bytes,
+    })
+}
+
+/// Scan a log from any byte reader and collect every decoded frame
+/// into [`ScanOutcome::frames`].
+///
+/// Input bytes are read in fixed 8 KiB chunks through [`LogScanner`],
+/// while all decoded [`ScannedFrame`] values accumulate in the
+/// returned vector. Callers scanning logs that may exceed memory
+/// should prefer [`scan_reader_with`], which runs in bounded `O(1)`
+/// (~8 KiB) memory.
 ///
 /// # Errors
 ///
 /// Returns [`WalError::Io`] when the reader fails, and the scanning
 /// errors of [`scan_log`].
-pub fn scan_reader(mut reader: impl Read) -> Result<ScanOutcome, WalError> {
-    let mut scanner = LogScanner::new();
+pub fn scan_reader(reader: impl Read) -> Result<ScanOutcome, WalError> {
     let mut frames = Vec::new();
-    let mut chunk = [0u8; 8192];
-    loop {
-        let read = reader
-            .read(&mut chunk)
-            .map_err(|e| WalError::io("read WAL stream", e))?;
-        if read == 0 {
-            break;
-        }
-        scanner.feed(&chunk[..read], &mut frames)?;
-    }
-    let discarded_trailing_bytes = scanner.finish(&mut frames)?;
+    let report = scan_reader_with(reader, |frame| {
+        frames.push(frame);
+        Ok(())
+    })?;
     Ok(ScanOutcome {
         frames,
-        discarded_trailing_bytes,
+        discarded_trailing_bytes: report.discarded_trailing_bytes,
     })
 }
 
@@ -525,5 +625,44 @@ mod tests {
             .feed(&gap_log[72..], &mut frames)
             .expect_err("the streaming scan convicts the gap");
         assert_eq!(stream_err.to_string(), whole_err.to_string());
+    }
+
+    #[test]
+    fn scan_reader_with_retries_interrupted_reads() {
+        struct InterruptedReader<'a> {
+            bytes: &'a [u8],
+            pos: usize,
+            interrupt_next: bool,
+        }
+
+        impl std::io::Read for InterruptedReader<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.interrupt_next {
+                    self.interrupt_next = false;
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Interrupted,
+                        "simulated EINTR",
+                    ));
+                }
+                self.interrupt_next = true;
+                if self.pos >= self.bytes.len() {
+                    return Ok(0);
+                }
+                let take = (self.bytes.len() - self.pos).min(buf.len()).min(13);
+                buf[..take].copy_from_slice(&self.bytes[self.pos..self.pos + take]);
+                self.pos += take;
+                Ok(take)
+            }
+        }
+
+        let log = three_frame_log();
+        let expected = scan_log(&log).expect("slice scan");
+        let via_reader = scan_reader(InterruptedReader {
+            bytes: &log,
+            pos: 0,
+            interrupt_next: true,
+        })
+        .expect("EINTR must be retried transparently");
+        assert_eq!(via_reader, expected);
     }
 }

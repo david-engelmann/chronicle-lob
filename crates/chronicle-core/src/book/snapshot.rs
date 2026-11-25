@@ -8,6 +8,7 @@
 //! emits its events and in the slots later allocations take.
 
 use crate::arena::{NIL, STATE_FREE, STATE_LIVE, STATE_RETIRED};
+use crate::config::BookConfig;
 use crate::error::BookError;
 use crate::types::{LevelState, LiveOrderState, OrderId, ParticipantId, Side, SnapshotState};
 
@@ -66,25 +67,21 @@ impl Book {
         }
     }
 
-    /// Rebuild a book from a captured state. The state must already
-    /// have passed `chronicle-wal`'s checked decode (section 10.4):
-    /// this constructor trusts the state's internal consistency,
-    /// guards it with debug assertions, and runs the full structural
-    /// invariant check on the rebuilt book in debug builds.
+    /// Rebuild a book from a captured state. Every structural invariant
+    /// (configuration, sequence number, section lengths, generations,
+    /// live record bounds and uniqueness, free-list exactness and
+    /// cycle-freedom, symmetric acyclic level lists, exact level
+    /// aggregates, single side per level, and an uncrossed book) is
+    /// validated unconditionally in both debug and release builds
+    /// before returning the rebuilt book.
     ///
     /// # Errors
     ///
     /// Returns [`BookError::InvalidConfig`] when the state's own
-    /// configuration fails validation, or when a section length
-    /// disagrees with the configuration it carries. Both are
-    /// unreachable for a state produced by capture or by the checked
-    /// snapshot decode.
-    ///
-    /// # Panics
-    ///
-    /// Panics when the state fails the structural invariant check in
-    /// debug builds, which a state produced by capture or by the
-    /// checked snapshot decode cannot do.
+    /// configuration fails validation, [`BookError::LookupCapacityFull`]
+    /// if the lookup load cap is exceeded, and
+    /// [`BookError::InvalidSnapshot`] when any structural invariant of
+    /// [`SnapshotState`] fails.
     pub fn from_snapshot_state(state: SnapshotState) -> Result<Self, BookError> {
         let SnapshotState {
             config,
@@ -95,31 +92,51 @@ impl Book {
             levels,
             live_orders,
         } = state;
-        let mut book = Self::new(config)?;
+        config.validate()?;
+        let _ = config.grid_end_tick()?;
+        if next_seq == 0 {
+            return Err(BookError::InvalidSnapshot {
+                reason: "next_seq must be at least 1",
+            });
+        }
         let max_orders = config.max_orders;
         let grid_len = config.grid_len;
         let slots = max_orders as usize;
         if generations.len() != slots || free_links.len() != slots {
-            return Err(BookError::InvalidConfig {
-                field: "snapshot state",
-                rule: "generation and free link sections must cover every slot",
+            return Err(BookError::InvalidSnapshot {
+                reason: "generation and free link sections must cover every slot",
             });
         }
         if levels.len() != grid_len as usize {
-            return Err(BookError::InvalidConfig {
-                field: "snapshot state",
-                rule: "the level section must cover the whole grid",
+            return Err(BookError::InvalidSnapshot {
+                reason: "the level section must cover the whole grid",
             });
         }
-        let (on_chain, free_len) = walk_free_chain(&free_links, free_list_head, max_orders)?;
-        let is_live = check_live_records(&live_orders, &generations, max_orders, grid_len)?;
+        if live_orders.len() > slots {
+            return Err(BookError::InvalidSnapshot {
+                reason: "live order count exceeds max_orders",
+            });
+        }
+        if generations.contains(&0) {
+            return Err(BookError::InvalidSnapshot {
+                reason: "slot generation must be at least 1",
+            });
+        }
+        let is_live = check_live_records(&live_orders, &generations, &free_links, &config)?;
+        let (on_chain, free_len) = walk_free_chain(
+            &free_links,
+            &generations,
+            &is_live,
+            free_list_head,
+            max_orders,
+        )?;
+        let mut book = Self::new(config)?;
         // Order ids must be unique; the lookup is the witness, and it
         // ends up holding exactly the live set.
         for record in &live_orders {
             if book.lookup.get(record.order_id.0).is_some() {
-                return Err(BookError::InvalidConfig {
-                    field: "snapshot state",
-                    rule: "live order ids must be unique",
+                return Err(BookError::InvalidSnapshot {
+                    reason: "live order ids must be unique",
                 });
             }
             book.lookup
@@ -159,7 +176,7 @@ impl Book {
         let live = u32::try_from(live_orders.len()).unwrap_or(0);
         book.arena
             .restore_bookkeeping(free_list_head, free_len, live);
-        restore_levels(&mut book, &levels, &is_live);
+        validate_and_restore_levels(&mut book, &levels, &is_live, live_orders.len())?;
         book.next_seq = next_seq;
         if cfg!(debug_assertions) {
             book.debug_assert_invariants();
@@ -170,9 +187,12 @@ impl Book {
 
 /// Walk a persisted free chain once, returning which slots it
 /// visits and how many there are. The chain must stay inside the
-/// slot range and visit no slot twice.
+/// slot range, avoid live slots, visit no slot twice, and account
+/// for every non-live non-retired slot.
 fn walk_free_chain(
     free_links: &[u32],
+    generations: &[u32],
+    is_live: &[bool],
     head: u32,
     max_orders: u32,
 ) -> Result<(Vec<bool>, u32), BookError> {
@@ -180,65 +200,224 @@ fn walk_free_chain(
     let mut free_len = 0u32;
     let mut cursor = head;
     while cursor != NIL {
-        if cursor >= max_orders || on_chain[cursor as usize] {
-            return Err(BookError::InvalidConfig {
-                field: "snapshot state",
-                rule: "the free list must visit in-range slots at most once",
+        if cursor >= max_orders {
+            return Err(BookError::InvalidSnapshot {
+                reason: "free list link leaves the slot range",
             });
         }
-        on_chain[cursor as usize] = true;
+        let idx = cursor as usize;
+        if is_live[idx] {
+            return Err(BookError::InvalidSnapshot {
+                reason: "free list visits a live slot",
+            });
+        }
+        if on_chain[idx] {
+            return Err(BookError::InvalidSnapshot {
+                reason: "free list contains a cycle",
+            });
+        }
+        on_chain[idx] = true;
         free_len += 1;
-        cursor = free_links[cursor as usize];
+        cursor = free_links[idx];
+    }
+    for s in 0..max_orders as usize {
+        if !is_live[s] && !on_chain[s] {
+            if generations[s] != u32::MAX {
+                return Err(BookError::InvalidSnapshot {
+                    reason: "free slot is missing from the free list",
+                });
+            }
+            if free_links[s] != NIL {
+                return Err(BookError::InvalidSnapshot {
+                    reason: "retired slot carries a non-NIL free link",
+                });
+            }
+        }
     }
     Ok((on_chain, free_len))
 }
 
 /// Validate the live records of a snapshot state, returning which
-/// slots they occupy. Each record must name an in-range slot and
-/// price, be the only record for its slot, and agree with the
-/// slot's persisted generation.
+/// slots they occupy. Records must appear in strictly ascending
+/// slot order, carry positive order ids and quantities, name
+/// in-range slots, prices, and neighbour links, carry NIL free
+/// links, and agree with the slot's persisted generation.
 fn check_live_records(
     live_orders: &[LiveOrderState],
     generations: &[u32],
-    max_orders: u32,
-    grid_len: u32,
+    free_links: &[u32],
+    config: &BookConfig,
 ) -> Result<Vec<bool>, BookError> {
+    let max_orders = config.max_orders;
+    let grid_len = config.grid_len;
     let mut is_live = vec![false; max_orders as usize];
+    let mut previous_slot: Option<u32> = None;
     for record in live_orders {
-        if record.slot >= max_orders || record.price_idx >= grid_len {
-            return Err(BookError::InvalidConfig {
-                field: "snapshot state",
-                rule: "live records must name an in-range slot and price",
+        if record.slot >= max_orders
+            || record.price_idx >= grid_len
+            || (config.grid_start_tick == 0 && record.price_idx == 0)
+        {
+            return Err(BookError::InvalidSnapshot {
+                reason: "live records must name an in-range slot and positive price",
             });
         }
-        if is_live[record.slot as usize] || record.generation != generations[record.slot as usize] {
-            return Err(BookError::InvalidConfig {
-                field: "snapshot state",
-                rule: "live records must be unique per slot and match its generation",
+        if let Some(prev_slot) = previous_slot
+            && record.slot <= prev_slot
+        {
+            return Err(BookError::InvalidSnapshot {
+                reason: "live records must be unique and in ascending slot order",
             });
         }
-        is_live[record.slot as usize] = true;
+        if record.order_id.0 == 0 {
+            return Err(BookError::InvalidSnapshot {
+                reason: "live order id must be non-zero",
+            });
+        }
+        if record.qty == 0 {
+            return Err(BookError::InvalidSnapshot {
+                reason: "live order quantity must be positive",
+            });
+        }
+        if (record.prev != NIL && record.prev >= max_orders)
+            || (record.next != NIL && record.next >= max_orders)
+        {
+            return Err(BookError::InvalidSnapshot {
+                reason: "live order prev and next links must be NIL or in-range",
+            });
+        }
+        let s = record.slot as usize;
+        if record.generation != generations[s] {
+            return Err(BookError::InvalidSnapshot {
+                reason: "live record generation disagrees with slot generation",
+            });
+        }
+        if free_links[s] != NIL {
+            return Err(BookError::InvalidSnapshot {
+                reason: "live slot carries a non-NIL free link",
+            });
+        }
+        is_live[s] = true;
+        previous_slot = Some(record.slot);
     }
     Ok(is_live)
 }
 
-/// Copy the level arrays into the book verbatim and rebuild the
-/// side bitmaps from the level counts, reading each non-empty
-/// level's side from its head order.
-fn restore_levels(book: &mut Book, levels: &[LevelState], is_live: &[bool]) {
+/// Walk and validate one non-empty price level list, returning the
+/// side of its orders.
+fn walk_level_list(
+    arena: &crate::arena::Arena,
+    idx: u32,
+    level: &LevelState,
+    is_live: &[bool],
+    seen_in_levels: &mut [bool],
+) -> Result<Side, BookError> {
+    let max_orders = arena.capacity();
+    if level.head >= max_orders || level.tail >= max_orders {
+        return Err(BookError::InvalidSnapshot {
+            reason: "non-empty level must name in-range head and tail slots",
+        });
+    }
+    let mut cursor = level.head;
+    let mut expected_prev = NIL;
+    let mut walked_count = 0u32;
+    let mut walked_qty = 0u64;
+    let mut level_side: Option<Side> = None;
+    while cursor != NIL {
+        if cursor >= max_orders || !is_live[cursor as usize] {
+            return Err(BookError::InvalidSnapshot {
+                reason: "level list visits a non-live or out-of-range slot",
+            });
+        }
+        let s = cursor as usize;
+        if seen_in_levels[s] {
+            return Err(BookError::InvalidSnapshot {
+                reason: "level list contains a cycle or shared slot",
+            });
+        }
+        seen_in_levels[s] = true;
+        if arena.price_idx[s] != idx {
+            return Err(BookError::InvalidSnapshot {
+                reason: "live order price_idx disagrees with its level",
+            });
+        }
+        if arena.prev[s] != expected_prev {
+            return Err(BookError::InvalidSnapshot {
+                reason: "level list prev link is asymmetric",
+            });
+        }
+        let side = Side::from_u8(arena.side[s]);
+        match level_side {
+            None => level_side = Some(side),
+            Some(existing) if existing != side => {
+                return Err(BookError::InvalidSnapshot {
+                    reason: "level mixes bid and ask orders",
+                });
+            }
+            Some(_) => {}
+        }
+        walked_count += 1;
+        walked_qty = walked_qty
+            .checked_add(arena.qty[s])
+            .ok_or(BookError::InvalidSnapshot {
+                reason: "level quantity overflows u64",
+            })?;
+        expected_prev = cursor;
+        cursor = arena.next[s];
+    }
+    if level.tail != expected_prev || level.count != walked_count || level.qty != walked_qty {
+        return Err(BookError::InvalidSnapshot {
+            reason: "level tail, count, or quantity disagrees with list walk",
+        });
+    }
+    Ok(level_side.unwrap_or(Side::Bid))
+}
+
+/// Validate every price level's doubly-linked list, cached count,
+/// cached quantity, single-side membership, total live reachability,
+/// and the uncrossed-book invariant before installing levels and
+/// bitmaps into `book`.
+fn validate_and_restore_levels(
+    book: &mut Book,
+    levels: &[LevelState],
+    is_live: &[bool],
+    expected_live: usize,
+) -> Result<(), BookError> {
+    let mut seen_in_levels = vec![false; book.config.max_orders as usize];
+    let mut total_walked = 0usize;
     for (i, level) in levels.iter().enumerate() {
+        let idx = u32::try_from(i).unwrap_or(0);
+        if level.count == 0 {
+            if level.head != NIL || level.tail != NIL || level.qty != 0 {
+                return Err(BookError::InvalidSnapshot {
+                    reason: "empty level must have NIL ends and zero quantity",
+                });
+            }
+            continue;
+        }
+        let side = walk_level_list(&book.arena, idx, level, is_live, &mut seen_in_levels)?;
         book.levels.head[i] = level.head;
         book.levels.tail[i] = level.tail;
         book.levels.qty[i] = level.qty;
         book.levels.count[i] = level.count;
-        if level.count > 0 && level.head != NIL && is_live[level.head as usize] {
-            let idx = u32::try_from(i).unwrap_or(0);
-            match Side::from_u8(book.arena.side[level.head as usize]) {
-                Side::Bid => book.bids.set(idx),
-                Side::Ask => book.asks.set(idx),
-            }
+        match side {
+            Side::Bid => book.bids.set(idx),
+            Side::Ask => book.asks.set(idx),
         }
+        total_walked += level.count as usize;
     }
+    if total_walked != expected_live {
+        return Err(BookError::InvalidSnapshot {
+            reason: "live order is not reachable from any level list",
+        });
+    }
+    if let (Some((bid_price, _)), Some((ask_price, _))) = (book.best_bid(), book.best_ask())
+        && bid_price >= ask_price
+    {
+        return Err(BookError::InvalidSnapshot {
+            reason: "snapshot book is crossed",
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -420,5 +599,86 @@ mod tests {
         // The lookup table is the smallest power of two holding
         // twice the order capacity (the 50 percent load cap).
         assert_eq!(book.lookup.capacity(), (2 * max_orders).next_power_of_two());
+    }
+
+    #[test]
+    fn from_snapshot_state_rejects_malformed_states_unconditionally() {
+        let valid = churned_book().capture_snapshot_state();
+
+        // next_seq == 0 rejected.
+        let mut bad = valid.clone();
+        bad.next_seq = 0;
+        assert!(matches!(
+            Book::from_snapshot_state(bad),
+            Err(BookError::InvalidSnapshot { .. })
+        ));
+
+        // Out-of-bounds level.head cannot panic on indexing.
+        let mut bad = valid.clone();
+        bad.levels[99].head = bad.config.max_orders;
+        assert!(matches!(
+            Book::from_snapshot_state(bad),
+            Err(BookError::InvalidSnapshot { .. })
+        ));
+
+        // Self-loop next = slot rejected without hanging.
+        let mut bad = valid.clone();
+        let slot = bad.live_orders[0].slot;
+        bad.live_orders[0].next = slot;
+        assert!(matches!(
+            Book::from_snapshot_state(bad),
+            Err(BookError::InvalidSnapshot { .. })
+        ));
+
+        // Zero order_id, zero qty, and out-of-bounds prev/next rejected.
+        let mut bad = valid.clone();
+        bad.live_orders[0].order_id = OrderId(0);
+        assert!(matches!(
+            Book::from_snapshot_state(bad),
+            Err(BookError::InvalidSnapshot { .. })
+        ));
+
+        let mut bad = valid.clone();
+        bad.live_orders[0].qty = 0;
+        assert!(matches!(
+            Book::from_snapshot_state(bad),
+            Err(BookError::InvalidSnapshot { .. })
+        ));
+
+        let mut bad = valid.clone();
+        bad.live_orders[0].prev = bad.config.max_orders;
+        assert!(matches!(
+            Book::from_snapshot_state(bad),
+            Err(BookError::InvalidSnapshot { .. })
+        ));
+
+        let mut bad = valid.clone();
+        bad.live_orders[0].next = bad.config.max_orders;
+        assert!(matches!(
+            Book::from_snapshot_state(bad),
+            Err(BookError::InvalidSnapshot { .. })
+        ));
+
+        // Crossed book rejected.
+        let mut bad = valid;
+        for order in &mut bad.live_orders {
+            if order.side == Side::Ask {
+                let old_idx = order.price_idx as usize;
+                let crossed_idx = 50usize; // below bid at 98..99
+                bad.levels[crossed_idx] = bad.levels[old_idx];
+                bad.levels[old_idx] = LevelState {
+                    head: NIL,
+                    tail: NIL,
+                    qty: 0,
+                    count: 0,
+                };
+                order.price_idx = u32::try_from(crossed_idx).unwrap();
+                break;
+            }
+        }
+        assert!(matches!(
+            Book::from_snapshot_state(bad),
+            Err(BookError::InvalidSnapshot { .. })
+        ));
     }
 }

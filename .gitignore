@@ -1,0 +1,8 @@
+/target
+.DS_Store
+*.wal
+*.wal.archive-*
+*.snapshot
+*.checkpoint
+*.tmp
+proptest-regressions/
