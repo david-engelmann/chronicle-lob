@@ -41,6 +41,8 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- docs/ROADMAP.md closes programme 6, with W1 at
+  5e04b7e1, the W2 record at 9dca673c, and W3 at fa5ffbee.
 - SECURITY.md states the supported versions, the private
   reporting route (GitHub private vulnerability reporting,
   now enabled on the repo), and the decoder scope

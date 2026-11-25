@@ -768,3 +768,9 @@ it scopes the decoder surface honestly: a panic or an
 accepted malformed record in either decoder counts as a
 security issue, and a pure performance problem does not,
 unless untrusted input can use it to halt a host.
+
+Programme 6 is complete: W1 landed at 5e04b7e1 (PR #46),
+the W2 exercise ran clean at that head (run 45534405839)
+and its record landed at 9dca673c (PR #47), and W3 landed
+at fa5ffbee (PR #48). Every F finding is closed. DC-5
+remains open as David's call.
