@@ -4,11 +4,13 @@
 # binary below keeps the name chronicle-cli, so installed usage does
 # not change.
 name = "chronicle-lob-cli"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.100"
 description = "Command line replay, verification, snapshot, and benchmark tool for chronicle books"
 license = "MIT OR Apache-2.0"
+readme = "README.md"
+documentation = "https://docs.rs/chronicle-lob-cli"
 keywords = ["orderbook", "replay", "cli", "deterministic"]
 categories = ["command-line-utilities", "finance"]
 repository = "https://github.com/david-engelmann/chronicle-lob"
@@ -18,10 +20,15 @@ name = "chronicle-cli"
 path = "src/main.rs"
 
 [dependencies]
-chronicle-core = { version = "0.2.0", path = "../chronicle-core" }
-chronicle-wal = { version = "0.2.0", path = "../chronicle-wal" }
+chronicle-core = { version = "0.3.0", path = "../chronicle-core" }
+chronicle-wal = { version = "0.3.0", path = "../chronicle-wal" }
 clap = { version = "4", features = ["env"] }
 serde_json = "1"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/chronicle-cli-v{ version }-{ target }{ archive-suffix }"
+bin-dir = "chronicle-cli-v{ version }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
 
 [lints]
 workspace = true

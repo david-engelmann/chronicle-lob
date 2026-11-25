@@ -8,6 +8,7 @@
 //! loaded. Decoding validates in the order of section 10.4, with the
 //! checksum last, and no partial state escapes a failed load.
 
+use std::collections::BTreeSet;
 #[cfg(unix)]
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -15,7 +16,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chronicle_core::{
-    BookConfig, LevelState, LiveOrderState, OrderId, ParticipantId, SnapshotState, StpPolicy,
+    BookConfig, BookError, LevelState, LiveOrderState, OrderId, ParticipantId, Side, SnapshotState,
+    StpPolicy,
 };
 
 use crate::crc::snapshot_crc;
@@ -32,7 +34,8 @@ pub const HEADER_LEN: usize = 64;
 pub const TRAILER_LEN: usize = 4;
 
 /// One step of the atomic save protocol (section 10.3), reported to
-/// the save hook in order.
+/// the fault-injection save hook in order.
+#[doc(hidden)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SaveStep {
     /// The snapshot is encoded into the save buffer.
@@ -54,17 +57,21 @@ pub enum SaveStep {
 /// 10.2).
 #[must_use]
 pub const fn encoded_len(state: &SnapshotState) -> usize {
-    68 + 8 * state.generations.len() + 20 * state.levels.len() + 56 * state.live_orders.len()
+    68 + 4 * state.generations.len()
+        + 4 * state.free_links.len()
+        + 20 * state.levels.len()
+        + 56 * state.live_orders.len()
 }
 
 /// Encode `state` into `out`, clearing any previous content. The
 /// buffer is reused across calls, like the WAL writer's.
 ///
-/// # Panics
-///
-/// Panics when `state.next_seq` is zero. A state captured from a
-/// book always has a next sequence of at least 1, because sequence
-/// numbers start at 1.
+/// Any [`SnapshotState`] captured from a [`chronicle_core::Book`] has
+/// `next_seq >= 1`, so `last_included_seq` encodes as `next_seq - 1`.
+/// If a synthetic state with `next_seq == 0` is supplied, `last_included_seq`
+/// saturates to `0` rather than panicking, producing a `(0, 0)` sequence
+/// pair that [`decode_snapshot`] rejects with
+/// [`SnapshotCorruption::NextSeqMismatch`].
 pub fn encode_snapshot(state: &SnapshotState, out: &mut Vec<u8>) {
     let total = encoded_len(state);
     out.clear();
@@ -72,10 +79,7 @@ pub fn encode_snapshot(state: &SnapshotState, out: &mut Vec<u8>) {
     out[0..4].copy_from_slice(&MAGIC);
     out[4..6].copy_from_slice(&VERSION.to_le_bytes());
     out[6..8].copy_from_slice(&64u16.to_le_bytes());
-    let last_included_seq = state
-        .next_seq
-        .checked_sub(1)
-        .expect("a captured next_seq is at least 1");
+    let last_included_seq = state.next_seq.saturating_sub(1);
     out[8..16].copy_from_slice(&last_included_seq.to_le_bytes());
     out[16..24].copy_from_slice(&state.next_seq.to_le_bytes());
     let live_count = u32::try_from(state.live_orders.len()).unwrap_or(0);
@@ -148,7 +152,13 @@ pub fn decode_snapshot(bytes: &[u8], expected: &BookConfig) -> Result<SnapshotSt
     let mut pos = HEADER_LEN;
     let mut generations = Vec::with_capacity(slots);
     for _ in 0..max_orders {
-        generations.push(read_u32(bytes, pos));
+        let generation = read_u32(bytes, pos);
+        if generation == 0 {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "slot generation",
+            }));
+        }
+        generations.push(generation);
         pos += 4;
     }
     let mut free_links = Vec::with_capacity(slots);
@@ -160,6 +170,7 @@ pub fn decode_snapshot(bytes: &[u8], expected: &BookConfig) -> Result<SnapshotSt
     let (live_orders, live_seen) =
         decode_live_records(bytes, &mut pos, &header, &generations, &free_links)?;
     validate_free_list(&header, &generations, &free_links, &live_seen)?;
+    validate_level_lists(&levels, &live_orders, max_orders, grid_len)?;
     // The checksum is validated last (section 10.4).
     let actual_len = bytes.len();
     let stored_crc = read_u32(bytes, actual_len - TRAILER_LEN);
@@ -253,16 +264,28 @@ fn read_header(bytes: &[u8]) -> Result<SnapshotHeader, WalError> {
             }));
         }
     };
+    let config = BookConfig {
+        max_orders,
+        grid_len,
+        tick_size,
+        grid_start_tick,
+        default_stp,
+    };
+    config.validate().map_err(|err| match err {
+        BookError::InvalidConfig { field, .. } => {
+            corrupt(SnapshotCorruption::InvalidField { field })
+        }
+        _ => corrupt(SnapshotCorruption::InvalidField { field: "config" }),
+    })?;
+    if live_count > max_orders {
+        return Err(corrupt(SnapshotCorruption::InvalidField {
+            field: "live_order_count",
+        }));
+    }
     Ok(SnapshotHeader {
         next_seq,
         live_count,
-        config: BookConfig {
-            max_orders,
-            grid_len,
-            tick_size,
-            grid_start_tick,
-            default_stp,
-        },
+        config,
         free_list_head,
     })
 }
@@ -310,6 +333,7 @@ fn decode_live_records(
     let grid_len = header.config.grid_len;
     let mut live_orders = Vec::with_capacity(header.live_count as usize);
     let mut live_seen = vec![false; max_orders as usize];
+    let mut seen_order_ids = BTreeSet::new();
     let mut previous_slot: Option<u32> = None;
     for _ in 0..header.live_count {
         let at = *pos;
@@ -345,6 +369,26 @@ fn decode_live_records(
                 field: "live record order",
             }));
         }
+        if order_id == 0 {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "live record order_id",
+            }));
+        }
+        if !seen_order_ids.insert(order_id) {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "live record duplicate order_id",
+            }));
+        }
+        if qty == 0 {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "live record qty",
+            }));
+        }
+        if (prev != u32::MAX && prev >= max_orders) || (next != u32::MAX && next >= max_orders) {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "live record neighbour link",
+            }));
+        }
         if generation != generations[slot as usize] {
             return Err(corrupt(SnapshotCorruption::GenerationMismatch { slot }));
         }
@@ -361,7 +405,7 @@ fn decode_live_records(
                 field: "live record state",
             }));
         }
-        if price_idx >= grid_len {
+        if price_idx >= grid_len || (header.config.grid_start_tick == 0 && price_idx == 0) {
             return Err(corrupt(SnapshotCorruption::InvalidField {
                 field: "live record price",
             }));
@@ -431,6 +475,141 @@ fn validate_free_list(
                 }));
             }
         }
+    }
+    Ok(())
+}
+
+/// Walk and validate one non-empty persisted price level list,
+/// returning the side of its orders.
+fn walk_decoded_level(
+    level_idx: u32,
+    level: &LevelState,
+    live_orders: &[LiveOrderState],
+    record_by_slot: &[Option<usize>],
+    visited: &mut [bool],
+) -> Result<Side, WalError> {
+    if level.head == u32::MAX || level.tail == u32::MAX {
+        return Err(corrupt(SnapshotCorruption::InvalidField {
+            field: "level list end",
+        }));
+    }
+    let mut cursor = level.head;
+    let mut expected_prev = u32::MAX;
+    let mut walked_count = 0u32;
+    let mut walked_qty = 0u64;
+    let mut level_side: Option<Side> = None;
+    while cursor != u32::MAX {
+        let Some(rec_idx) = record_by_slot.get(cursor as usize).copied().flatten() else {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "level list slot",
+            }));
+        };
+        if visited[cursor as usize] {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "level list cycle",
+            }));
+        }
+        visited[cursor as usize] = true;
+        let record = &live_orders[rec_idx];
+        if record.price_idx != level_idx {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "live record price_idx",
+            }));
+        }
+        if record.prev != expected_prev {
+            return Err(corrupt(SnapshotCorruption::InvalidField {
+                field: "level list prev link",
+            }));
+        }
+        match level_side {
+            None => level_side = Some(record.side),
+            Some(existing) if existing != record.side => {
+                return Err(corrupt(SnapshotCorruption::InvalidField {
+                    field: "level mixed sides",
+                }));
+            }
+            Some(_) => {}
+        }
+        walked_count += 1;
+        walked_qty = walked_qty.checked_add(record.qty).ok_or_else(|| {
+            corrupt(SnapshotCorruption::InvalidField {
+                field: "level qty overflow",
+            })
+        })?;
+        expected_prev = cursor;
+        cursor = record.next;
+    }
+    if level.tail != expected_prev {
+        return Err(corrupt(SnapshotCorruption::InvalidField {
+            field: "level tail",
+        }));
+    }
+    if level.count != walked_count {
+        return Err(corrupt(SnapshotCorruption::InvalidField {
+            field: "level count",
+        }));
+    }
+    if level.qty != walked_qty {
+        return Err(corrupt(SnapshotCorruption::InvalidField {
+            field: "level qty",
+        }));
+    }
+    Ok(level_side.unwrap_or(Side::Bid))
+}
+
+/// Validate per-level doubly-linked lists, aggregates, single-side
+/// membership, live-order reachability, and the uncrossed-book
+/// invariant (`best_bid < best_ask`).
+fn validate_level_lists(
+    levels: &[LevelState],
+    live_orders: &[LiveOrderState],
+    max_orders: u32,
+    grid_len: u32,
+) -> Result<(), WalError> {
+    let slots = max_orders as usize;
+    let mut record_by_slot: Vec<Option<usize>> = vec![None; slots];
+    for (idx, record) in live_orders.iter().enumerate() {
+        record_by_slot[record.slot as usize] = Some(idx);
+    }
+    let mut visited = vec![false; slots];
+    let mut total_walked = 0usize;
+    let mut best_bid_idx: Option<u32> = None;
+    let mut best_ask_idx: Option<u32> = None;
+
+    for level_idx in 0..grid_len {
+        let level = &levels[level_idx as usize];
+        if level.count == 0 {
+            if level.head != u32::MAX || level.tail != u32::MAX || level.qty != 0 {
+                return Err(corrupt(SnapshotCorruption::InvalidField {
+                    field: "empty level state",
+                }));
+            }
+            continue;
+        }
+        let side =
+            walk_decoded_level(level_idx, level, live_orders, &record_by_slot, &mut visited)?;
+        match side {
+            Side::Bid => best_bid_idx = Some(level_idx),
+            Side::Ask => {
+                if best_ask_idx.is_none() {
+                    best_ask_idx = Some(level_idx);
+                }
+            }
+        }
+        total_walked += level.count as usize;
+    }
+
+    if total_walked != live_orders.len() {
+        return Err(corrupt(SnapshotCorruption::InvalidField {
+            field: "orphan live record",
+        }));
+    }
+    if let (Some(bid_idx), Some(ask_idx)) = (best_bid_idx, best_ask_idx)
+        && bid_idx >= ask_idx
+    {
+        return Err(corrupt(SnapshotCorruption::InvalidField {
+            field: "crossed book",
+        }));
     }
     Ok(())
 }
@@ -522,6 +701,9 @@ fn tmp_path(path: &Path) -> PathBuf {
 /// write the `.tmp` sibling, sync it, rename it over the target,
 /// then run the parent directory step.
 ///
+/// Callers that save repeatedly can reuse one buffer across saves
+/// with [`save_snapshot_with_buffer`].
+///
 /// # Examples
 ///
 /// ```
@@ -548,27 +730,53 @@ fn tmp_path(path: &Path) -> PathBuf {
 ///
 /// Returns [`WalError::Io`] when any step fails.
 pub fn save_snapshot(path: &Path, state: &SnapshotState) -> Result<(), WalError> {
-    save_snapshot_with_hook(path, state, &mut |_| true)
+    let mut buffer = Vec::with_capacity(encoded_len(state));
+    save_snapshot_with_buffer(path, state, &mut buffer)
 }
 
-/// [`save_snapshot`] with a hook called after each protocol step.
+/// Save a snapshot atomically using a caller-owned `buffer` that is
+/// reused across saves without reallocating once warmed (INV-ALLOC-3).
+///
+/// # Errors
+///
+/// Returns [`WalError::Io`] when any filesystem step fails.
+pub fn save_snapshot_with_buffer(
+    path: &Path,
+    state: &SnapshotState,
+    buffer: &mut Vec<u8>,
+) -> Result<(), WalError> {
+    save_snapshot_inner(path, state, buffer, &mut |_| true)
+}
+
+/// [`save_snapshot`] with a fault-injection hook called after each
+/// protocol step.
 ///
 /// Returning `false` from the hook stops the save at that point,
 /// exactly as a crash would: the function returns success with the
 /// filesystem left mid-protocol. Recovery tests drive the crash
 /// oracle through this hook (INV-SNAP-2); production callers use
-/// [`save_snapshot`].
+/// [`save_snapshot`] or [`save_snapshot_with_buffer`].
 ///
 /// # Errors
 ///
 /// Returns [`WalError::Io`] when any step fails.
+#[doc(hidden)]
 pub fn save_snapshot_with_hook(
     path: &Path,
     state: &SnapshotState,
     hook: &mut dyn FnMut(SaveStep) -> bool,
 ) -> Result<(), WalError> {
-    let mut buffer = Vec::new();
-    encode_snapshot(state, &mut buffer);
+    let mut buffer = Vec::with_capacity(encoded_len(state));
+    save_snapshot_inner(path, state, &mut buffer, hook)
+}
+
+fn save_snapshot_inner(
+    path: &Path,
+    state: &SnapshotState,
+    buffer: &mut Vec<u8>,
+    hook: &mut dyn FnMut(SaveStep) -> bool,
+) -> Result<(), WalError> {
+    encode_snapshot(state, buffer);
     if !hook(SaveStep::Encoded) {
         return Ok(());
     }
@@ -580,7 +788,7 @@ pub fn save_snapshot_with_hook(
             .truncate(true)
             .open(&tmp)
             .map_err(|e| WalError::io("open snapshot temp file", e))?;
-        file.write_all(&buffer)
+        file.write_all(buffer)
             .map_err(|e| WalError::io("write snapshot temp file", e))?;
         if !hook(SaveStep::TmpWritten) {
             return Ok(());
@@ -1043,5 +1251,44 @@ mod tests {
             book.capture_snapshot_state()
         };
         assert_eq!(script(&mut restored), script(&mut book));
+    }
+
+    #[test]
+    fn snapshot_save_reuses_buffer() {
+        // INV-ALLOC-3 (snapshot half): save_snapshot_with_buffer
+        // warms its buffer to the encoded snapshot size and reuses
+        // it across saves without growing.
+        let dir = scratch("buffer-reuse");
+        let path = dir.join("book.csnp");
+        let state = hand_state();
+        let mut buffer = Vec::new();
+        save_snapshot_with_buffer(&path, &state, &mut buffer).expect("warm save");
+        let warmed = buffer.capacity();
+        assert!(warmed >= encoded_len(&state));
+        for _ in 0..20 {
+            save_snapshot_with_buffer(&path, &state, &mut buffer).expect("steady save");
+            assert_eq!(buffer.capacity(), warmed);
+        }
+        let loaded = load_snapshot(&path, &state.config).expect("load");
+        assert_eq!(loaded, state);
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn encode_snapshot_zero_next_seq_never_panics() {
+        let mut state = hand_state();
+        state.next_seq = 0;
+        let mut out = Vec::new();
+        encode_snapshot(&state, &mut out);
+        let err = decode_snapshot(&out, &state.config).expect_err("next_seq 0 must fail decode");
+        assert!(matches!(
+            err,
+            WalError::CorruptSnapshot {
+                detail: SnapshotCorruption::NextSeqMismatch {
+                    last_included_seq: 0,
+                    next_seq: 0
+                }
+            }
+        ));
     }
 }

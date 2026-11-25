@@ -1,15 +1,13 @@
 //! A worked durability session for chronicle-wal: five commands
 //! are written to a log as they are applied to a live book, a
 //! snapshot is taken halfway, and recovery from the pair must
-//! rebuild the live book exactly. The example writes session.wal
-//! and session.snapshot into the current directory, which is the
-//! pair the README's worked example inspects with chronicle-cli.
-//! A second act then runs the checkpoint composition of
-//! ARCHITECTURE.md section 10.6 on a copy of the log, so the
-//! README pair survives: stream-recover, snapshot, verify by
-//! loading back, archive the covered log, start a fresh log, and
-//! recover across the seam. CI runs this example and diffs its
-//! output against `wal_recovery.expected.txt`.
+//! rebuild the live book exactly. A second act then runs the
+//! checkpoint composition of ARCHITECTURE.md section 10.6:
+//! stream-recover, snapshot, verify by loading back, archive the
+//! covered log, start a fresh log, and recover across the seam.
+//! Temporary files live inside a dedicated directory under the
+//! system temp path and are removed before exit. CI runs this
+//! example and diffs its output against `wal_recovery.expected.txt`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -58,11 +56,12 @@ fn describe(label: &str, book: &Book) {
 }
 
 fn main() {
-    let wal_path = PathBuf::from("session.wal");
-    // Bare file names are fine: save_snapshot treats an empty
-    // parent as the current directory (finding A-9, decided in
-    // lane R6).
-    let snapshot_path = PathBuf::from("session.snapshot");
+    let dir = std::env::temp_dir().join(format!("chronicle-wal-example-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("create example scratch dir");
+
+    let wal_path = dir.join("session.wal");
+    let snapshot_path = dir.join("session.snapshot");
     let mut book = Book::new(config()).expect("the example configuration is valid");
     let file = fs::File::create(&wal_path).expect("create session.wal");
     let mut writer = WalWriter::new(file, SyncPolicy::Never);
@@ -124,16 +123,15 @@ fn main() {
     assert_eq!(recovery.book.best_bid(), book.best_bid());
     assert_eq!(recovery.book.best_ask(), book.best_ask());
     println!("match: yes");
-    checkpoint_act(&wal_path, &mut storage);
+    checkpoint_act(&dir, &wal_path, &mut storage);
+    fs::remove_dir_all(&dir).expect("clean up example scratch dir");
 }
 
-// The checkpoint composition (ARCHITECTURE.md section 10.6),
-// run on a copy of the session log so the pair above survives
-// for the README's worked example.
-fn checkpoint_act(wal_path: &Path, storage: &mut Vec<ExecutionEvent>) {
-    let checkpoint_wal = PathBuf::from("session-checkpoint.wal");
+// The checkpoint composition (ARCHITECTURE.md section 10.6).
+fn checkpoint_act(dir: &Path, wal_path: &Path, storage: &mut Vec<ExecutionEvent>) {
+    let checkpoint_wal = dir.join("session-checkpoint.wal");
     fs::copy(wal_path, &checkpoint_wal).expect("copy the session log");
-    let checkpoint_path = PathBuf::from("session.checkpoint");
+    let checkpoint_path = dir.join("session.checkpoint");
     let streamed = recover_from_files(config(), None, &checkpoint_wal)
         .expect("streaming recovery of the copied log succeeds");
     let checkpoint_state = streamed.book.capture_snapshot_state();
@@ -141,13 +139,13 @@ fn checkpoint_act(wal_path: &Path, storage: &mut Vec<ExecutionEvent>) {
     let verified = load_snapshot(&checkpoint_path, &config()).expect("the checkpoint loads");
     assert_eq!(verified, checkpoint_state, "the checkpoint round-trips");
     let covered = checkpoint_state.next_seq - 1;
-    let archive_path = PathBuf::from(format!("session-checkpoint.wal.archive-{covered}"));
+    let archive_name = format!("session-checkpoint.wal.archive-{covered}");
+    let archive_path: PathBuf = dir.join(&archive_name);
     fs::rename(&checkpoint_wal, &archive_path).expect("archive the covered log");
     println!(
-        "checkpoint: last_included_seq={} live_orders={} archived={}",
+        "checkpoint: last_included_seq={} live_orders={} archived={archive_name}",
         covered,
         checkpoint_state.live_orders.len(),
-        archive_path.display()
     );
 
     // The embedding application then starts a fresh log at the

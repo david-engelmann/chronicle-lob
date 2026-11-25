@@ -16,6 +16,7 @@ use chronicle_core::{
     StpPolicy,
 };
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
+use std::hint::black_box;
 
 const fn bench_config() -> BookConfig {
     BookConfig {
@@ -112,13 +113,15 @@ fn occupied_book_with_targets() -> (Book, Vec<ExecutionEvent>) {
 fn amend_stream(book: &mut Book, storage: &mut Vec<ExecutionEvent>) {
     for i in 0..STREAM {
         let mut events = EventBuffer::new(&mut *storage);
-        book.amend_order(
-            OrderId(STREAM_FIRST_ID + i),
-            100 + ((i + 60) % 120),
-            7,
-            &mut events,
-        )
-        .expect("stream amend applies");
+        let written = book
+            .amend_order(
+                black_box(OrderId(STREAM_FIRST_ID + i)),
+                black_box(100 + ((i + 60) % 120)),
+                black_box(7),
+                &mut events,
+            )
+            .expect("stream amend applies");
+        black_box(written);
         storage.clear();
     }
 }

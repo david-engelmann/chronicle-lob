@@ -42,6 +42,69 @@ impl BookConfig {
             })
     }
 
+    /// Smallest valid raw price on the grid, in quote units.
+    ///
+    /// Price zero is never valid on a [`crate::Book`] (ARCHITECTURE.md
+    /// section 3.2), so when `grid_start_tick` is `0` the lowest
+    /// addressable price tick is `1` (`tick_size`); otherwise it is
+    /// `grid_start_tick * tick_size`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronicle_core::{BookConfig, StpPolicy};
+    ///
+    /// let cfg = BookConfig {
+    ///     max_orders: 64,
+    ///     grid_len: 640,
+    ///     tick_size: 5,
+    ///     grid_start_tick: 100,
+    ///     default_stp: StpPolicy::CancelIncoming,
+    /// };
+    /// assert_eq!(cfg.min_price(), 500);
+    /// assert_eq!(cfg.max_price().unwrap(), 3695);
+    /// ```
+    #[must_use]
+    pub const fn min_price(&self) -> u64 {
+        let first_tick = if self.grid_start_tick == 0 {
+            1
+        } else {
+            self.grid_start_tick
+        };
+        first_tick.saturating_mul(self.tick_size)
+    }
+
+    /// Largest valid raw price on the grid, in quote units:
+    /// `(grid_start_tick + grid_len - 1) * tick_size`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BookError::InvalidConfig`] when `grid_len` or
+    /// `tick_size` is zero or when the grid end or highest raw price
+    /// overflows `u64`.
+    pub fn max_price(&self) -> Result<u64, BookError> {
+        if self.grid_len == 0 {
+            return Err(BookError::InvalidConfig {
+                field: "grid_len",
+                rule: "must be a multiple of 64, at least 64, at most 2^22",
+            });
+        }
+        if self.tick_size == 0 {
+            return Err(BookError::InvalidConfig {
+                field: "tick_size",
+                rule: "must be at least 1",
+            });
+        }
+        let end = self.grid_end_tick()?;
+        let highest_tick = end - 1;
+        highest_tick
+            .checked_mul(self.tick_size)
+            .ok_or(BookError::InvalidConfig {
+                field: "grid end * tick_size",
+                rule: "the largest raw price on the grid must fit in u64",
+            })
+    }
+
     /// Validate every construction rule.
     ///
     /// # Errors
@@ -67,16 +130,7 @@ impl BookConfig {
                 rule: "must be at least 1",
             });
         }
-        let end = self.grid_end_tick()?;
-        // The largest raw price on the grid is (end - 1) * tick_size and
-        // must be representable, so price_of_tick can never overflow.
-        let highest_tick = end - 1;
-        if highest_tick.checked_mul(self.tick_size).is_none() {
-            return Err(BookError::InvalidConfig {
-                field: "grid end * tick_size",
-                rule: "the largest raw price on the grid must fit in u64",
-            });
-        }
+        let _ = self.max_price()?;
         Ok(())
     }
 

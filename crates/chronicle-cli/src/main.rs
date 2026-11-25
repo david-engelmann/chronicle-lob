@@ -11,16 +11,17 @@
 #![forbid(unsafe_code)]
 
 use std::fs;
+use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use chronicle_core::{
     Book, BookConfig, CancelReason, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId,
-    Side, StpPolicy,
+    Side, SnapshotState, StpPolicy,
 };
 use chronicle_wal::{
-    ScannedFrame, WalError, load_snapshot, recover_from_reader, save_snapshot, scan_reader,
-    snapshot_config,
+    ScannedFrame, WalError, decode_snapshot, load_snapshot, recover_from_reader, save_snapshot,
+    scan_reader_with, snapshot_config,
 };
 use clap::{Arg, ArgMatches, Command};
 
@@ -46,42 +47,30 @@ fn parser() -> Command {
                 .about("Apply a write-ahead log and print the event stream")
                 .arg(wal_arg())
                 .arg(snapshot_arg())
-                .args(config_args(true)),
+                .args(config_args()),
         )
         .subcommand(
             Command::new("verify")
                 .about("Report the sequence and checksum health of a log and snapshot pair")
                 .arg(wal_arg())
                 .arg(snapshot_arg())
-                .args(config_args(true)),
+                .args(config_args()),
         )
         .subcommand(
             Command::new("snapshot")
-                .about("Write a snapshot from a write-ahead log")
+                .about("Write a snapshot from a write-ahead log and optional base snapshot")
                 .arg(wal_arg())
-                .arg(
-                    Arg::new("out")
-                        .long("out")
-                        .value_name("PATH")
-                        .value_parser(clap::value_parser!(PathBuf))
-                        .required(true)
-                        .help("Snapshot file to write"),
-                )
-                .args(config_args(false)),
+                .arg(snapshot_arg())
+                .arg(out_arg())
+                .args(config_args()),
         )
         .subcommand(
             Command::new("checkpoint")
                 .about("Write a verified snapshot and archive the log it covers")
                 .arg(wal_arg())
-                .arg(
-                    Arg::new("out")
-                        .long("out")
-                        .value_name("PATH")
-                        .value_parser(clap::value_parser!(PathBuf))
-                        .required(true)
-                        .help("Snapshot file to write"),
-                )
-                .args(config_args(false)),
+                .arg(snapshot_arg())
+                .arg(out_arg())
+                .args(config_args()),
         )
         .subcommand(
             Command::new("bench")
@@ -120,56 +109,53 @@ fn snapshot_arg() -> Arg {
         .help("Snapshot file supplying the base book and its configuration")
 }
 
-/// The book configuration flags. When the subcommand also accepts a
-/// snapshot, the snapshot supplies the configuration instead: the
-/// flags then conflict with `--snapshot` and are required without
-/// one. When it does not, the flags are simply required.
-fn config_args(with_snapshot: bool) -> Vec<Arg> {
-    let mut max_orders = Arg::new("max-orders")
+fn out_arg() -> Arg {
+    Arg::new("out")
+        .long("out")
+        .value_name("PATH")
+        .value_parser(clap::value_parser!(PathBuf))
+        .required(true)
+        .help("Snapshot file to write")
+}
+
+/// The book configuration flags. When `--snapshot` is supplied, the
+/// snapshot header carries the configuration instead: the flags
+/// conflict with `--snapshot` and are required without one.
+fn config_args() -> Vec<Arg> {
+    let max_orders = Arg::new("max-orders")
         .long("max-orders")
         .value_name("U32")
         .value_parser(clap::value_parser!(u32))
+        .required_unless_present("snapshot")
+        .conflicts_with("snapshot")
         .help("Arena capacity of the book");
-    let mut grid_len = Arg::new("grid-len")
+    let grid_len = Arg::new("grid-len")
         .long("grid-len")
         .value_name("U32")
         .value_parser(clap::value_parser!(u32))
+        .required_unless_present("snapshot")
+        .conflicts_with("snapshot")
         .help("Number of price ticks on the grid");
-    let mut tick_size = Arg::new("tick-size")
+    let tick_size = Arg::new("tick-size")
         .long("tick-size")
         .value_name("U64")
         .value_parser(clap::value_parser!(u64))
+        .required_unless_present("snapshot")
+        .conflicts_with("snapshot")
         .help("Quote units per tick");
-    let mut grid_start_tick = Arg::new("grid-start-tick")
+    let grid_start_tick = Arg::new("grid-start-tick")
         .long("grid-start-tick")
         .value_name("U64")
         .value_parser(clap::value_parser!(u64))
+        .required_unless_present("snapshot")
+        .conflicts_with("snapshot")
         .help("Tick value of the first grid level");
-    let mut default_stp = Arg::new("default-stp")
+    let default_stp = Arg::new("default-stp")
         .long("default-stp")
         .value_name("POLICY")
         .value_parser(["cancel-incoming", "cancel-resting", "cancel-both"])
+        .conflicts_with("snapshot")
         .help("Default self-trade prevention policy");
-    if with_snapshot {
-        max_orders = max_orders
-            .required_unless_present("snapshot")
-            .conflicts_with("snapshot");
-        grid_len = grid_len
-            .required_unless_present("snapshot")
-            .conflicts_with("snapshot");
-        tick_size = tick_size
-            .required_unless_present("snapshot")
-            .conflicts_with("snapshot");
-        grid_start_tick = grid_start_tick
-            .required_unless_present("snapshot")
-            .conflicts_with("snapshot");
-        default_stp = default_stp.conflicts_with("snapshot");
-    } else {
-        max_orders = max_orders.required(true);
-        grid_len = grid_len.required(true);
-        tick_size = tick_size.required(true);
-        grid_start_tick = grid_start_tick.required(true);
-    }
     vec![
         max_orders,
         grid_len,
@@ -221,11 +207,12 @@ const fn reason_token(reason: CancelReason) -> &'static str {
     }
 }
 
-/// The section 2.3 event line contract, one line per event.
-fn format_event(event: &ExecutionEvent) -> String {
+/// Write the section 2.3 event line directly into `out` without
+/// allocating an intermediate `String` per event.
+fn write_event(out: &mut impl Write, event: &ExecutionEvent) -> io::Result<()> {
     match event {
         ExecutionEvent::Accepted { seq, order_id } => {
-            format!("{seq} accepted order={}", order_id.0)
+            writeln!(out, "{seq} accepted order={}", order_id.0)
         }
         ExecutionEvent::Trade {
             seq,
@@ -233,16 +220,20 @@ fn format_event(event: &ExecutionEvent) -> String {
             taker_order_id,
             price,
             qty,
-        } => format!(
+        } => writeln!(
+            out,
             "{seq} trade maker={} taker={} price={price} qty={qty}",
             maker_order_id.0, taker_order_id.0
         ),
-        ExecutionEvent::Filled { seq, order_id } => format!("{seq} filled order={}", order_id.0),
+        ExecutionEvent::Filled { seq, order_id } => {
+            writeln!(out, "{seq} filled order={}", order_id.0)
+        }
         ExecutionEvent::Cancelled {
             seq,
             order_id,
             reason,
-        } => format!(
+        } => writeln!(
+            out,
             "{seq} cancelled order={} reason={}",
             order_id.0,
             reason_token(*reason)
@@ -252,81 +243,106 @@ fn format_event(event: &ExecutionEvent) -> String {
             order_id,
             price,
             qty,
-        } => format!("{seq} amended order={} price={price} qty={qty}", order_id.0),
+        } => writeln!(
+            out,
+            "{seq} amended order={} price={price} qty={qty}",
+            order_id.0
+        ),
         ExecutionEvent::Expired {
             seq,
             order_id,
             remaining_qty,
-        } => format!(
+        } => writeln!(
+            out,
             "{seq} expired order={} remaining={remaining_qty}",
             order_id.0
         ),
         ExecutionEvent::SelfTradePrevented { seq, order_id } => {
-            format!("{seq} self-trade-prevented order={}", order_id.0)
+            writeln!(out, "{seq} self-trade-prevented order={}", order_id.0)
         }
     }
 }
 
-/// The sequence continuity check shared by replay and verify:
+/// Streaming sequence continuity check shared by replay and verify:
 /// frames at or below `base_seq` are covered by the base snapshot,
-/// and the rest must step by exactly one from `base_seq + 1`.
-fn sequence_gap(frames: &[ScannedFrame], base_seq: u64) -> Option<WalError> {
-    let mut expected = base_seq + 1;
-    for frame in frames {
-        if frame.seq <= base_seq {
-            continue;
+/// and the rest must step by exactly one from `base_seq + 1` using
+/// checked arithmetic.
+struct SequenceChecker {
+    base_seq: u64,
+    expected: Option<u64>,
+}
+
+impl SequenceChecker {
+    const fn new(base_seq: u64) -> Self {
+        Self {
+            base_seq,
+            expected: base_seq.checked_add(1),
         }
+    }
+
+    const fn check(&mut self, frame: &ScannedFrame) -> Result<(), WalError> {
+        if frame.seq <= self.base_seq {
+            return Ok(());
+        }
+        let Some(expected) = self.expected else {
+            return Err(WalError::WalSequenceGap {
+                expected: u64::MAX,
+                found: frame.seq,
+                offset: frame.offset,
+            });
+        };
         if frame.seq != expected {
-            return Some(WalError::WalSequenceGap {
+            return Err(WalError::WalSequenceGap {
                 expected,
                 found: frame.seq,
                 offset: frame.offset,
             });
         }
-        expected += 1;
+        self.expected = expected.checked_add(1);
+        Ok(())
     }
-    None
 }
 
 struct Inputs {
     wal_path: PathBuf,
     config: BookConfig,
-    snapshot_path: Option<PathBuf>,
+    base_snapshot: Option<SnapshotState>,
 }
 
-/// Resolve the inputs of replay: paths, and the configuration,
-/// which a supplied snapshot carries in its own header.
+/// Resolve the inputs of a WAL subcommand: the log path, the book
+/// configuration, and the decoded base snapshot when `--snapshot` is
+/// supplied, reading the snapshot file from disk only once.
 fn inputs(sub: &ArgMatches) -> Result<Inputs, String> {
     let wal_path = sub
         .get_one::<PathBuf>("wal")
         .expect("the parser requires --wal")
         .clone();
-    let snapshot_path = sub.get_one::<PathBuf>("snapshot").cloned();
-    let config = match &snapshot_path {
+    let (config, base_snapshot) = match sub.get_one::<PathBuf>("snapshot") {
         Some(path) => {
             let bytes = fs::read(path)
                 .map_err(|e| format!("cannot read snapshot {}: {e}", path.display()))?;
-            snapshot_config(&bytes).map_err(|e| e.to_string())?
+            let config = snapshot_config(&bytes).map_err(|e| e.to_string())?;
+            let state = decode_snapshot(&bytes, &config).map_err(|e| e.to_string())?;
+            (config, Some(state))
         }
-        None => config_from_flags(sub),
+        None => (config_from_flags(sub), None),
     };
     Ok(Inputs {
         wal_path,
         config,
-        snapshot_path,
+        base_snapshot,
     })
 }
 
 fn replay(sub: &ArgMatches) -> Result<(), String> {
-    // INV-DET-2: the seed banner prints at startup, before any
-    // event line, exactly as the bench text output opens.
     let seed = *sub.get_one::<u64>("seed").expect("seed has a default");
-    println!("seed={seed}");
     let inputs = inputs(sub)?;
-    let (mut book, base_seq) = match &inputs.snapshot_path {
-        Some(path) => {
-            let state = load_snapshot(path, &inputs.config).map_err(|e| e.to_string())?;
-            let base_seq = state.next_seq - 1;
+    let (mut book, base_seq) = match inputs.base_snapshot {
+        Some(state) => {
+            let base_seq = state
+                .next_seq
+                .checked_sub(1)
+                .ok_or_else(|| "snapshot next_seq must be at least 1".to_string())?;
             let book = Book::from_snapshot_state(state).map_err(|e| e.to_string())?;
             (book, base_seq)
         }
@@ -334,29 +350,63 @@ fn replay(sub: &ArgMatches) -> Result<(), String> {
     };
     let file = fs::File::open(&inputs.wal_path)
         .map_err(|e| format!("cannot read log {}: {e}", inputs.wal_path.display()))?;
-    let outcome = scan_reader(file).map_err(|e| e.to_string())?;
-    if let Some(gap) = sequence_gap(&outcome.frames, base_seq) {
-        return Err(gap.to_string());
+    // INV-DET-2: the seed banner prints at startup, before any
+    // event line, buffered alongside the event stream.
+    let stdout = io::stdout();
+    let mut out = BufWriter::new(stdout.lock());
+    if let Err(err) = writeln!(out, "seed={seed}") {
+        return if err.kind() == io::ErrorKind::BrokenPipe {
+            Ok(())
+        } else {
+            Err(format!("cannot write replay output: {err}"))
+        };
     }
     let mut storage: Vec<ExecutionEvent> =
         Vec::with_capacity(2 * inputs.config.max_orders as usize + 2);
-    for frame in &outcome.frames {
+    let mut seq_check = SequenceChecker::new(base_seq);
+    let mut frame_rejection: Option<String> = None;
+    let scan_res = scan_reader_with(file, |frame| {
+        seq_check.check(&frame)?;
         if frame.seq <= base_seq {
-            continue;
+            return Ok(());
         }
-        let mut events = EventBuffer::new(&mut storage);
-        let written = frame.command.apply(&mut book, &mut events).map_err(|e| {
-            format!(
-                "frame at offset {} (seq {}) rejected: {e}",
-                frame.offset, frame.seq
-            )
-        })?;
+        let written = {
+            let mut events = EventBuffer::new(&mut storage);
+            match frame.command.apply(&mut book, &mut events) {
+                Ok(written) => written,
+                Err(source) => {
+                    frame_rejection = Some(format!(
+                        "frame at offset {} (seq {}) rejected: {source}",
+                        frame.offset, frame.seq
+                    ));
+                    return Err(WalError::Book {
+                        seq: Some(frame.seq),
+                        source,
+                    });
+                }
+            }
+        };
         for event in &storage[..written] {
-            println!("{}", format_event(event));
+            write_event(&mut out, event).map_err(|source| WalError::Io {
+                operation: "write replay output",
+                source,
+            })?;
         }
         storage.clear();
+        Ok(())
+    });
+    match scan_res {
+        Ok(_) => match out.flush() {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+            Err(err) => Err(format!("cannot flush replay output: {err}")),
+        },
+        Err(WalError::Io {
+            operation: "write replay output",
+            source,
+        }) if source.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        Err(err) => Err(frame_rejection.unwrap_or_else(|| err.to_string())),
     }
-    Ok(())
 }
 
 fn run_replay(sub: &ArgMatches) -> ExitCode {
@@ -381,35 +431,32 @@ fn verify(sub: &ArgMatches) -> ExitCode {
             Ok(config) => config,
             Err(e) => return corrupt(&e),
         };
-        match load_snapshot(path, &config) {
+        match decode_snapshot(&bytes, &config) {
             Ok(state) => {
-                base_seq = state.next_seq - 1;
+                base_seq = state.next_seq.saturating_sub(1);
                 println!(
                     "snapshot: ok last_included_seq={} live_orders={}",
-                    state.next_seq - 1,
+                    base_seq,
                     state.live_orders.len()
                 );
             }
             Err(e) => return corrupt(&e),
         }
-    } else if let Err(e) = Book::new(config_from_flags(sub)) {
+    } else if let Err(e) = config_from_flags(sub).validate() {
         return fail(&e.to_string());
     }
-    let outcome = match fs::File::open(&wal_path) {
-        Ok(file) => scan_reader(file),
+    let file = match fs::File::open(&wal_path) {
+        Ok(file) => file,
         Err(e) => return fail(&format!("cannot read log {}: {e}", wal_path.display())),
     };
-    match outcome {
-        Ok(outcome) => {
-            if let Some(gap) = sequence_gap(&outcome.frames, base_seq) {
-                return corrupt(&gap);
-            }
-            let last_seq = outcome.frames.last().map_or(0, |frame| frame.seq);
+    let mut seq_check = SequenceChecker::new(base_seq);
+    match scan_reader_with(file, |frame| seq_check.check(&frame)) {
+        Ok(report) => {
             println!(
                 "wal: ok frames={} discarded={} last_seq={}",
-                outcome.frames.len(),
-                outcome.discarded_trailing_bytes,
-                last_seq
+                report.frame_count,
+                report.discarded_trailing_bytes,
+                report.last_seq.unwrap_or(0)
             );
             println!("verdict: ok");
             ExitCode::SUCCESS
@@ -419,23 +466,20 @@ fn verify(sub: &ArgMatches) -> ExitCode {
 }
 
 fn snapshot_command(sub: &ArgMatches) -> Result<(), String> {
-    let config = config_from_flags(sub);
-    let wal_path = sub
-        .get_one::<PathBuf>("wal")
-        .expect("the parser requires --wal")
-        .clone();
+    let inputs = inputs(sub)?;
     let out_path = sub
         .get_one::<PathBuf>("out")
         .expect("the parser requires --out")
         .clone();
-    let file = fs::File::open(&wal_path)
-        .map_err(|e| format!("cannot read log {}: {e}", wal_path.display()))?;
-    let recovery = recover_from_reader(config, None, file).map_err(|e| e.to_string())?;
+    let file = fs::File::open(&inputs.wal_path)
+        .map_err(|e| format!("cannot read log {}: {e}", inputs.wal_path.display()))?;
+    let recovery = recover_from_reader(inputs.config, inputs.base_snapshot, file)
+        .map_err(|e| e.to_string())?;
     let state = recovery.book.capture_snapshot_state();
     save_snapshot(&out_path, &state).map_err(|e| e.to_string())?;
     println!(
         "snapshot: written last_included_seq={} live_orders={}",
-        state.next_seq - 1,
+        state.next_seq.saturating_sub(1),
         state.live_orders.len()
     );
     Ok(())
@@ -458,32 +502,33 @@ fn archive_path_for(wal_path: &Path, last_included_seq: u64) -> PathBuf {
 }
 
 fn checkpoint_command(sub: &ArgMatches) -> Result<(), String> {
-    let config = config_from_flags(sub);
-    let wal_path = sub
-        .get_one::<PathBuf>("wal")
-        .expect("the parser requires --wal")
-        .clone();
+    // `inputs` reads and decodes the optional `--snapshot` completely
+    // in memory before we open the WAL or write `--out`, so `--snapshot
+    // foo.snap --out foo.snap` updates in place safely through
+    // `save_snapshot`'s atomic `.tmp` write, fsync, and rename.
+    let inputs = inputs(sub)?;
     let out_path = sub
         .get_one::<PathBuf>("out")
         .expect("the parser requires --out")
         .clone();
-    let file = fs::File::open(&wal_path)
-        .map_err(|e| format!("cannot read log {}: {e}", wal_path.display()))?;
-    let recovery = recover_from_reader(config, None, file).map_err(|e| e.to_string())?;
+    let file = fs::File::open(&inputs.wal_path)
+        .map_err(|e| format!("cannot read log {}: {e}", inputs.wal_path.display()))?;
+    let recovery = recover_from_reader(inputs.config, inputs.base_snapshot, file)
+        .map_err(|e| e.to_string())?;
     let state = recovery.book.capture_snapshot_state();
-    let last_included_seq = state.next_seq - 1;
+    let last_included_seq = state.next_seq.saturating_sub(1);
     save_snapshot(&out_path, &state).map_err(|e| e.to_string())?;
     // Verify before archiving (ARCHITECTURE.md section 10.6): the
     // snapshot on disk must load and name the sequence the log
     // reached. Until this passes, the log stays where it is.
-    let loaded = load_snapshot(&out_path, &config).map_err(|e| e.to_string())?;
+    let loaded = load_snapshot(&out_path, &inputs.config).map_err(|e| e.to_string())?;
     if loaded.next_seq != state.next_seq {
         return Err(format!(
             "checkpoint verification failed: the snapshot names next_seq {} but the log reached {}",
             loaded.next_seq, state.next_seq
         ));
     }
-    let archive_path = archive_path_for(&wal_path, last_included_seq);
+    let archive_path = archive_path_for(&inputs.wal_path, last_included_seq);
     if archive_path.exists() {
         fs::remove_file(&archive_path).map_err(|e| {
             format!(
@@ -492,8 +537,8 @@ fn checkpoint_command(sub: &ArgMatches) -> Result<(), String> {
             )
         })?;
     }
-    fs::rename(&wal_path, &archive_path)
-        .map_err(|e| format!("cannot archive log {}: {e}", wal_path.display()))?;
+    fs::rename(&inputs.wal_path, &archive_path)
+        .map_err(|e| format!("cannot archive log {}: {e}", inputs.wal_path.display()))?;
     println!(
         "checkpoint: written last_included_seq={} live_orders={} archived_log={}",
         last_included_seq,

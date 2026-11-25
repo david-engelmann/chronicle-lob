@@ -40,8 +40,8 @@ pub struct RecoveryReport {
     pub last_recovered_seq: u64,
 }
 
-/// A recovered book and its report. No `Debug` derive: the book
-/// itself does not implement `Debug`.
+/// A recovered book and its report.
+#[derive(Debug)]
 pub struct Recovery {
     /// The rebuilt book, ready for new commands.
     pub book: Book,
@@ -149,6 +149,40 @@ pub fn recover(
 /// wins. Callers who need validate-before-apply keep the slice
 /// form; callers with logs too large to hold take this one.
 ///
+/// # Examples
+///
+/// ```
+/// use std::io::Cursor;
+///
+/// use chronicle_core::{BookConfig, OrderId, OrderType, ParticipantId, Side, StpPolicy};
+/// use chronicle_wal::{WalCommand, encode_frame, recover_from_reader};
+///
+/// let config = BookConfig {
+///     max_orders: 16,
+///     grid_len: 640,
+///     tick_size: 1,
+///     grid_start_tick: 1,
+///     default_stp: StpPolicy::CancelIncoming,
+/// };
+/// let mut frame = Vec::new();
+/// encode_frame(
+///     &WalCommand::Add {
+///         order_id: OrderId(1),
+///         participant: ParticipantId(1),
+///         side: Side::Bid,
+///         order_type: OrderType::Limit,
+///         stp: None,
+///         price: 100,
+///         qty: 12,
+///     },
+///     1,
+///     &mut frame,
+/// );
+/// let recovery = recover_from_reader(config, None, Cursor::new(&frame)).unwrap();
+/// assert_eq!(recovery.book.best_bid(), Some((100, 12)));
+/// assert_eq!(recovery.report.frames_applied, 1);
+/// ```
+///
 /// # Errors
 ///
 /// Returns the errors of [`recover`], with the error-ordering
@@ -164,9 +198,11 @@ pub fn recover_from_reader(
     let mut frames: Vec<ScannedFrame> = Vec::new();
     let mut chunk = [0u8; 8192];
     loop {
-        let read = reader
-            .read(&mut chunk)
-            .map_err(|e| WalError::io("read WAL stream", e))?;
+        let read = match reader.read(&mut chunk) {
+            Ok(n) => n,
+            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(WalError::io("read WAL stream", e)),
+        };
         if read == 0 {
             break;
         }
@@ -246,10 +282,9 @@ impl Replayer {
             self.frames_skipped += 1;
             return Ok(());
         }
-        let expected = self.last_recovered_seq.wrapping_add(1);
-        if frame.seq != expected {
+        if self.last_recovered_seq.checked_add(1) != Some(frame.seq) {
             return Err(WalError::WalSequenceGap {
-                expected,
+                expected: self.last_recovered_seq.saturating_add(1),
                 found: frame.seq,
                 offset: frame.offset,
             });
@@ -412,9 +447,7 @@ mod tests {
         // be exactly last_included_seq + 1.
         let snapshot = state_after(3);
         let log = log_of(&[(add(3), 5)]);
-        let err = recover(test_config(), Some(snapshot), &log)
-            .err()
-            .expect("seam gap");
+        let err = recover(test_config(), Some(snapshot), &log).expect_err("seam gap");
         match err {
             WalError::WalSequenceGap {
                 expected: 4,
@@ -452,9 +485,7 @@ mod tests {
         // the writer side would never have accepted) fails with the
         // book's error at the frame's sequence, never a panic.
         let log = log_of(&[(add(1), 1), (add(1), 2)]);
-        let err = recover(test_config(), None, &log)
-            .err()
-            .expect("duplicate id");
+        let err = recover(test_config(), None, &log).expect_err("duplicate id");
         match err {
             WalError::Book {
                 seq: Some(2),
@@ -520,8 +551,7 @@ mod tests {
             Some(state_after(3)),
             std::io::Cursor::new(log_of(&[(add(3), 5)])),
         )
-        .err()
-        .expect("seam gap");
+        .expect_err("seam gap");
         match err {
             WalError::WalSequenceGap {
                 expected: 4,
@@ -530,5 +560,52 @@ mod tests {
             } => {}
             other => panic!("expected seam gap (4, 5) at 0, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn recover_from_reader_retries_interrupted_reads() {
+        struct InterruptedReader<'a> {
+            bytes: &'a [u8],
+            pos: usize,
+            interrupt_next: bool,
+        }
+
+        impl std::io::Read for InterruptedReader<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.interrupt_next {
+                    self.interrupt_next = false;
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Interrupted,
+                        "simulated EINTR",
+                    ));
+                }
+                self.interrupt_next = true;
+                if self.pos >= self.bytes.len() {
+                    return Ok(0);
+                }
+                let take = (self.bytes.len() - self.pos).min(buf.len()).min(17);
+                buf[..take].copy_from_slice(&self.bytes[self.pos..self.pos + take]);
+                self.pos += take;
+                Ok(take)
+            }
+        }
+
+        let bytes = log_of(&[(add(1), 1), (add(2), 2), (add(3), 3)]);
+        let expected = recover(test_config(), None, &bytes).expect("slice recovery");
+        let streamed = recover_from_reader(
+            test_config(),
+            None,
+            InterruptedReader {
+                bytes: &bytes,
+                pos: 0,
+                interrupt_next: true,
+            },
+        )
+        .expect("EINTR must be retried transparently");
+        assert_eq!(streamed.report, expected.report);
+        assert_eq!(
+            streamed.book.capture_snapshot_state(),
+            expected.book.capture_snapshot_state()
+        );
     }
 }

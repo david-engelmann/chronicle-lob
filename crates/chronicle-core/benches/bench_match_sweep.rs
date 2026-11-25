@@ -61,18 +61,22 @@ fn bench_match_sweep(c: &mut Criterion) {
             sweep_book,
             |(mut book, mut storage)| {
                 let mut events = EventBuffer::new(&mut storage);
-                black_box(book.add_order(
-                    OrderId(900_001),
-                    ParticipantId(9),
-                    Side::Bid,
-                    OrderType::Limit,
-                    159,
-                    6000,
-                    None,
-                    &mut events,
-                ))
+                let written = book
+                    .add_order(
+                        black_box(OrderId(900_001)),
+                        black_box(ParticipantId(9)),
+                        black_box(Side::Bid),
+                        black_box(OrderType::Limit),
+                        black_box(159),
+                        black_box(6000),
+                        black_box(None),
+                        &mut events,
+                    )
+                    .expect("sweep applies");
+                black_box(written);
+                (book, storage)
             },
-            BatchSize::SmallInput,
+            BatchSize::LargeInput,
         );
     });
     group.finish();

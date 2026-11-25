@@ -1,10 +1,12 @@
 [package]
 name = "chronicle-core"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.100"
 description = "Single-threaded deterministic limit order book and matching engine with zero steady-state allocation"
 license = "MIT OR Apache-2.0"
+readme = "README.md"
+documentation = "https://docs.rs/chronicle-core"
 keywords = ["orderbook", "matching-engine", "trading", "deterministic"]
 categories = ["data-structures", "finance"]
 repository = "https://github.com/david-engelmann/chronicle-lob"

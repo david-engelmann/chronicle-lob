@@ -42,64 +42,71 @@ rust-toolchain.toml):
 | --- | --- | --- | --- |
 | chronicle-core | library | none, std only | Arena, lookup table, price bitmaps, matching engine, events, errors. No I/O, no clock, no randomness. |
 | chronicle-wal | library | chronicle-core | WAL frame writer and reader, snapshot writer and loader, recovery driver. Owns all file I/O for durable state. |
-| chronicle-cli | binary | chronicle-core, chronicle-wal, clap, serde_json | Replay, verify, snapshot, and benchmark commands. The only crate that parses text or prints JSON. |
+| chronicle-lob-cli (bin: chronicle-cli) | binary | chronicle-core, chronicle-wal, clap, serde_json | Replay, verify, snapshot, checkpoint, and benchmark commands. The only crate that parses text or prints JSON. |
 
 Dependency direction is one way: cli depends on wal and core, wal depends
 on core, core depends on nothing. External crates are confined to the
 adapter, CLI, benchmark, and dev-dependency roles listed in DECISIONS.md
 Q5. chronicle-core has no non-dev dependencies at all, and CI enforces
-this by parsing crates/chronicle-core/Cargo.toml in the zero-dep-core job.
+this from `cargo metadata` in the zero-dep-core job.
 
 ### 2.1 chronicle-core modules
 
 | Module | Contents |
 | --- | --- |
-| lib.rs | Crate documentation, public re-exports, forbid(unsafe_code), lint configuration. |
-| config.rs | BookConfig and its validation. All capacities and the tick grid are fixed here, once, at construction. |
-| types.rs | OrderId, ParticipantId, SlotIdx, Side, OrderType, StpPolicy, Price and quantity newtypes and raw conversions. |
+| lib.rs | Crate documentation, README doctests, public re-exports, forbid(unsafe_code), lint configuration. |
+| config.rs | BookConfig, grid bounds (`min_price`, `max_price`, `grid_end_tick`), and validation. All capacities and the tick grid are fixed here, once, at construction. |
+| types.rs | OrderId, ParticipantId, Side, OrderType, StpPolicy, LiveOrderState, LevelState, SnapshotState. |
 | error.rs | BookError, every variant carries diagnostic fields (section 8). |
-| arena.rs | Struct-of-arrays order arena, typed slot handles, generation checks, free list (section 4). |
+| arena.rs | Struct-of-arrays order arena, generation-checked slot handles, free list (section 4). |
 | lookup.rs | OrderId to slot lookup table, SplitMix64 hashing, Knuth Algorithm R deletion (section 5). |
-| bitmap.rs | Hierarchical active-price bitmaps and best bid and ask discovery (section 6). |
+| bitmap.rs | Hierarchical active-price bitmaps and O(depth) best-price and neighbour discovery (section 6). |
 | level.rs | Per-price-level aggregate state (head, tail, total quantity, order count). |
-| events.rs | ExecutionEvent and the caller-owned EventBuffer with its capacity contract (section 7.6). |
-| book.rs | The Book state machine: add, cancel, amend, cancel_by_participant, match loop, L2 depth queries, debug_assert_invariants. |
-| book/snapshot.rs | Snapshot capture and restore on Book: reads the arena, levels, and free list into the SnapshotState transfer shape, and rebuilds a book from a validated state (section 10). A child module of book.rs so it works on the private fields directly. |
+| events.rs | ExecutionEvent and the caller-owned EventBuffer (`new`, `remaining`, `written`, `clear`) with its capacity contract (section 7.6). |
+| book.rs | The Book state machine: add, cancel, amend, cancel_by_participant, match loop, L2 depth, zero-allocation order and level queries (`get_order`, `contains_order`, `spread`, `level_at`, `orders_at`, `free_order_count`), compact `Debug`, and `debug_assert_invariants`. |
+| book/snapshot.rs | Snapshot capture and unconditional structural restore on Book: reads the arena, levels, and free list into the SnapshotState transfer shape, and rebuilds a book after validating every structural invariant in both debug and release builds (section 10). |
+| prop_tests.rs | Deterministic `SIM_SEED` property test runner and full-surface oracle property suite (`cfg(test)`). |
 | reference_book.rs | A deliberately simple BTreeMap based reference book, compiled only under cfg(test) and used as the property-test oracle. Never shipped in the public API. |
 
 ### 2.2 chronicle-wal modules
 
 | Module | Contents |
 | --- | --- |
-| lib.rs | Crate documentation, public re-exports, forbid(unsafe_code). |
+| lib.rs | Crate documentation, README doctests, public re-exports, forbid(unsafe_code). |
 | frame.rs | Frame header and payload encode and decode for the byte format in section 9. Pure byte logic, no file I/O, unit tested against golden vectors. |
-| crc.rs | CRC32C (Castagnoli), a local table-driven implementation in this module, with the domain-separation prefixes from sections 9.3 and 10.2 applied at this layer only. |
-| writer.rs | WalWriter: appends frames to a file, reused encode buffer, configurable sync policy (section 9.4). |
-| reader.rs | WalReader and the recovery scan: crash boundary versus corruption decision table (section 9.5). |
-| snapshot.rs | Snapshot save and load: atomic write protocol, structural restore, CRC validation (section 10). |
-| recover.rs | recover(): snapshot load plus WAL replay, sequence continuity enforcement, RecoveryReport. |
+| crc.rs | CRC32C (Castagnoli), a local slicing-by-8 table-driven implementation in this module, with the domain-separation prefixes from sections 9.3 and 10.2 applied at this layer only. |
+| writer.rs | WalWriter: appends frames to a sink, reused encode buffer, configurable sync policy (section 9.4). |
+| reader.rs | `scan_log`, `LogScanner`, collecting `scan_reader`, bounded-memory `scan_reader_with` (`ScanReport`), and `read_log`: crash boundary versus corruption decision table (section 9.5). |
+| snapshot.rs | Snapshot save (`save_snapshot`, `save_snapshot_with_buffer`) and load: atomic write protocol, header config validation, complete structural validation, and CRC validation (section 10). |
+| recover.rs | `recover`, `recover_from_reader`, `recover_from_files`: snapshot load plus WAL replay, sequence continuity enforcement, `Recovery` and `RecoveryReport`. |
 
 ### 2.3 chronicle-cli
 
-One binary, subcommands: replay (apply a WAL to a fresh or snapshot based
-book and print the event stream), verify (scan a WAL and snapshot pair and
-report sequence and CRC health), snapshot (write a snapshot from a WAL),
-and bench (seeded synthetic load, plain text or JSON with --json). All
-subcommands accept --seed <u64> and honour SIM_SEED. Output ordering is
-fully determined by the input files and the seed.
+One binary (`chronicle-cli`, package `chronicle-lob-cli`), five subcommands:
+replay (stream a WAL through `scan_reader_with` onto a fresh or snapshot-based
+book and write buffered event lines to stdout, exiting 0 cleanly on
+`BrokenPipe`), verify (stream a WAL and optional snapshot in `O(1)` ~8 KiB
+memory and report sequence and CRC health), snapshot (write an atomic
+snapshot from a WAL and optional `--snapshot` base), checkpoint (write a
+verified atomic snapshot from a WAL and optional `--snapshot` base and
+archive the covered log, supporting multi-cycle `--snapshot foo.snap --out
+foo.snap` in-place updates), and bench (seeded synthetic load, plain text
+or JSON with `--json`). All subcommands accept `--seed <u64>` and honour
+`SIM_SEED`. Output ordering is fully determined by the input files and the
+seed.
 
 ### 2.4 Safety and lint posture
 
 Every production library and binary target opens with
 #![forbid(unsafe_code)]. The single permitted exception is the dedicated
-allocation-counting integration test target in Milestone 4, and only if a
-vetted tracking allocator crate proves insufficient. That target, if it
-exists, carries #[allow(unsafe_code, reason = "...")] with the exact
-justification written out, and no production code path depends on it.
+allocation-counting integration test targets (`alloc_proof.rs` in
+`chronicle-core` and `chronicle-wal`), which carry
+`#[allow(unsafe_code, reason = "...")]` with the exact justification
+written out, and no production code path depends on them.
 
 Workspace lints deny clippy::all, clippy::pedantic, and clippy::nursery
 findings, deny clippy::todo and clippy::unimplemented, deny
-clippy::allow_attributes_without_reason, warn on missing_docs, and build
+clippy::allow_attributes_without_reason, deny missing_docs, and build
 docs with RUSTDOCFLAGS="-D warnings". Every local allow carries a reason.
 
 ## 3. Core types and configuration
@@ -172,7 +179,7 @@ ever grows. Column set:
 | price_idx | Vec<u32> | Dense tick index per slot. |
 | qty | Vec<u64> | Remaining quantity per slot. |
 | side | Vec<u8> | 0 bid, 1 ask. |
-| state | Vec<u8> | 0 free, 1 live. |
+| state | Vec<u8> | 0 free, 1 live, 2 retired. |
 | prev | Vec<u32> | Previous slot in the price level list, or NIL. |
 | next | Vec<u32> | Next slot in the price level list, or the free list link when the slot is free. |
 | generation | Vec<u32> | Generation counter per slot, section 4.3. |
@@ -328,14 +335,18 @@ scans and lets a level hold bids and asks at different times without bit
 contention. A tick index can be active on both sides only across time,
 never at once in a resting book that satisfies best_bid < best_ask.
 
-### 6.3 Best bid and best ask in O(1) word scans
+### 6.3 Best bid, best ask, and neighbour queries in O(depth) word scans
 
 Best ask: from the root word, take trailing_zeros to find the lowest set
 child index, descend one level, repeat, until level 0 yields the lowest
-active tick index. Best bid is the mirror image with leading_zeros for
-the highest active tick index. Each descent step is one word read and
-one bit scan instruction; total work is O(depth) with depth at most 4
-for any permitted grid, independent of how many levels are active. An
+active tick index. Best bid is the mirror image with ilog2 for
+the highest active tick index. Neighbour queries (`highest_below` and
+`lowest_above`, used by L2 depth iteration and sweep level stepping)
+check the starting leaf word first, ascend the hierarchy to the first
+ancestor word holding a sibling subtree on the target side, and descend
+back to level 0. Total work for best-price and neighbour queries alike
+is O(depth) with depth at most 4 for any permitted grid (`grid_len <= 2^22`),
+independent of how many levels are active or how sparse the grid is. An
 empty side yields None from a zero root word in one read.
 
 Insertion at a level tail, removal of any slot, and level activation and
@@ -359,6 +370,10 @@ number of events written.
 - cancel_by_participant(participant, events)
 - amend_order(order_id, new_price, new_qty, events)
 - best_bid(), best_ask(): Option<(price, aggregate qty)>, no events.
+- spread(): Option<u64>, `best_ask - best_bid` when both sides rest.
+- get_order(order_id) -> Option<OrderInfo>, contains_order(order_id) -> bool,
+  free_order_count() -> u32, level_at(price) -> Result<Option<(Side, DepthLevel)>, BookError>,
+  orders_at(price) -> Result<OrdersAt<'_>, BookError>: zero-allocation read queries.
 - depth(side, max_levels, out: &mut [DepthLevel]) -> usize: L2 snapshot
   into a caller slice, section 7.7.
 - debug_assert_invariants(): full structural check, debug builds and
@@ -548,6 +563,8 @@ variant carries the concrete values that explain the failure:
 
 | Variant | Fields | Raised when |
 | --- | --- | --- |
+| InvalidConfig | field, rule | BookConfig validation fails at construction. |
+| InvalidSnapshot | reason | SnapshotState fails unconditional structural validation in `Book::from_snapshot_state`. |
 | InvalidOrderId | order_id | OrderId is zero. |
 | DuplicateOrderId | order_id | An active order already uses the id. |
 | InvalidQuantity | qty | Quantity is zero on add or amend. |
@@ -604,7 +621,7 @@ Header, 32 bytes:
 | 0 | 4 | magic | Bytes 0x43 0x57 0x41 0x4C, ASCII "CWAL". |
 | 4 | 2 | version | u16, value 1. |
 | 6 | 2 | header_len | u16, value 32 for version 1. |
-| 8 | 8 | seq | u64, the command sequence number, strictly increasing by 1 across the log. |
+| 8 | 8 | seq | u64, the 1-based command sequence number (`seq >= 1`), strictly increasing by 1 across the log. |
 | 16 | 4 | payload_len | u32, exact payload width for the kind; at most MAX_PAYLOAD_LEN = 4096 as a defensive cap. |
 | 20 | 1 | kind | u8, section 9.2. |
 | 21 | 1 | flags | u8, reserved, must be zero in version 1. |
@@ -697,7 +714,7 @@ The reader scans frames from offset 0 and classifies every stop:
 | Fewer than 32 bytes remain, and every fixed-value byte present matches the value a valid header carries at that position | Clean crash boundary. The trailing fragment is a prefix of a valid header, cut off by a torn write. Discarded byte count is reported. Fixed-value positions are: magic at bytes 0..4, version at bytes 4..6 (value 1), header_len at bytes 6..8 (value 32), flags at byte 21 (value 0), and the reserved fields at bytes 22..28 (value 0). Variable positions (seq, payload_len, kind payload semantics, CRC) constrain nothing in a fragment, except that a kind byte present at byte 20 must be a known kind value. |
 | Fewer than 32 bytes remain, and any fixed-value byte present mismatches, or at least 4 bytes remain and the magic does not match | CorruptWalRecord { offset }. A torn write cannot produce this: the writer emits the header in one write_all, so a crash leaves a prefix of a correct header, never wrong fixed bytes. A mismatch in any present fixed byte means foreign or overwritten data, at any fragment length, including fragments under 4 bytes (a wrong first byte is already decisive). |
 | Magic matches but fewer than 32 + payload_len bytes remain | Clean crash boundary. Torn payload. |
-| version is not 1, header_len is not 32, payload_len exceeds the cap, payload_len does not match the kind fixed width, kind is unknown, or a reserved field is non-zero | CorruptWalRecord { offset } with the specific field in the error message. |
+| version is not 1, header_len is not 32, seq is 0, payload_len exceeds the cap, payload_len does not match the kind fixed width, kind is unknown, or a reserved field is non-zero | CorruptWalRecord { offset } with the specific field in the error message. |
 | CRC mismatch on a complete frame | CorruptWalRecord { offset, expected_crc, actual_crc }. A complete frame with a bad CRC is corruption, never a crash boundary, because the writer only reports success after the full frame is written. |
 | seq is not exactly previous seq + 1 among replayed frames | WalSequenceGap { expected, found, offset }. |
 
@@ -717,12 +734,14 @@ The scan also runs in streaming form (programme 2, lane S5).
 log, holding back only the bytes of one undecided tail, because the
 crash boundary rows are decidable only at the true end of the log;
 the corruption and sequence rows surface the moment their bytes
-arrive. `scan_reader` drives the scanner from any byte reader in
-bounded memory, and the CLI's verify and replay commands read
-through it, so the log a command can process is no longer bounded
-by memory. The streaming outcome is `scan_log`'s outcome over the
-same bytes, proven across every truncation of the fixture log at
-several chunk sizes (INV-WAL-2).
+arrive. `scan_reader_with` drives the scanner from any byte reader in
+bounded `O(1)` (~8 KiB) memory, draining its per-chunk frame buffer on
+each 8 KiB read and returning a `ScanReport`, and the CLI's verify and
+replay commands read through it so multi-gigabyte logs run in constant
+memory (`scan_reader` remains as a convenience wrapper that collects
+decoded frames into a `Vec`). The streaming outcome equals `scan_log`'s
+outcome over the same bytes, proven across every truncation of the
+fixture log at several chunk sizes (INV-WAL-2).
 
 Programme 3 lane T1 extends the same streaming to recovery:
 `recover_from_reader` applies frames as the scanner produces
@@ -847,12 +866,21 @@ the single-threaded engine.
 
 Loading validates in order: file size against the header arithmetic,
 magic, version, header_len, next_seq equals last_included_seq + 1,
+BookConfig validity via `config.validate()` inside `read_header` (so
+both `snapshot_config` and `decode_snapshot` reject malformed headers),
 configuration compatibility with the BookConfig the caller supplied
 (a snapshot restores into a book built with the identical config; any
-field mismatch is SnapshotConfigMismatch naming both values), and
-finally the trailing CRC. CRC failure is CorruptSnapshot { expected_crc,
-actual_crc }. No partial state escapes a failed load: restore builds a
-fresh Book and returns it only on full success.
+field mismatch is SnapshotConfigMismatch naming both values), full
+structural validation of generations, live records, free-list
+exactness, symmetric acyclic level lists, level counts and quantities,
+single side per level, and an uncrossed book (`best_bid < best_ask`),
+and finally the trailing CRC. CRC failure is CorruptSnapshot { expected_crc,
+actual_crc }. `Book::from_snapshot_state` enforces the same complete
+structural validation unconditionally in both debug and release builds
+before any arena or level indexing, so untrusted `SnapshotState` values
+can never panic or create a cyclic book in release mode. No partial
+state escapes a failed load: restore builds a fresh Book and returns it
+only on full success.
 
 Restore then: copies generations for all slots, restores the free
 list verbatim (free_list_head from the header, each link from the free
@@ -941,9 +969,14 @@ of the existing primitives rather than a new mechanism:
    snapshot's next sequence, and recovery from the snapshot plus
    the fresh log continues the book.
 
-The CLI performs the loop as the checkpoint subcommand. The
+The CLI performs the loop as the checkpoint subcommand (and accepts
+`--snapshot <PATH>` on both `checkpoint` and `snapshot` for multi-cycle
+checkpointing, loading the base snapshot into memory before atomically
+writing `--out`, so `--snapshot foo.snap --out foo.snap` updates in
+place safely). The
 library deliberately gains no checkpoint function: the
-primitives (recover_from_reader, save_snapshot, load_snapshot)
+primitives (recover_from_reader, save_snapshot, save_snapshot_with_buffer,
+load_snapshot)
 already carry the semantics, and the loop is orchestration an
 operator runs, not state the engine keeps. The archive is a
 rename, never a delete, so the covered history survives until
@@ -951,20 +984,22 @@ the operator chooses to retire it.
 
 ## 11. Determinism rules
 
-Binding on chronicle-core and on the recovery path of chronicle-wal:
+Binding on chronicle-core and on chronicle-wal:
 
 - No SystemTime, Instant, or any clock read.
-- No thread_rng, no OS entropy, no RandomState. All hashing uses the
-  fixed SplitMix64 function of section 5.2.
+- No thread_rng, no OS entropy, no RandomState, no DefaultHasher. All
+  hashing uses the fixed SplitMix64 function of section 5.2.
 - No iteration over HashMap or HashSet. The design needs neither; where
   an associative structure is required it is the lookup table of
-  section 5 or a BTreeMap in the test-only reference book.
+  section 5 or a BTreeMap/BTreeSet.
 - Floating point does not appear in the core at all. Prices, quantities,
   notionals, and aggregates are integers.
-- Simulation and property runners take --seed <u64> or SIM_SEED and
-  print the active seed on every run. The same seed must reproduce
-  byte-identical event traces across processes; CI checks this by
-  running the CLI replay twice and comparing hashes in Milestone 4.
+- Simulation and property runners (`proptest` suites in `chronicle-core`
+  and `chronicle-wal`, `alloc_proof`, and `chronicle-cli`) take `--seed
+  <u64>` or `SIM_SEED`, derive deterministic streams (`ChaCha` seeded per
+  property name or `SplitMix64`), and print the active seed once per
+  test binary or CLI invocation. The same seed reproduces byte-identical
+  event traces and identical generated test cases across processes.
 
 debug_assert_invariants() is the structural self-check used by every
 property test after every command: crossed book check, per-level qty and
@@ -1049,11 +1084,13 @@ docs/INVARIANTS.md is the normative mapping. Summary of the machinery:
   rejection path, and asserts exactly zero allocations in the steady
   state window. Thread-local counting is what makes the measurement
   immune to parallel test threads.
-- Benchmarks (criterion, benches only): add and cancel latency,
-  match sweep latency, depth query cost, WAL append and recovery
-  throughput, each reporting p50, p95, p99, and p99.9 where criterion
-  supports it, with Throughput::Elements or Throughput::Bytes set per
-  benchmark and inputs and outputs wrapped in black_box. CI runs
+- Benchmarks (criterion, benches only): add, cancel, best-price, amend,
+  and mass-cancel latency, match sweep latency, depth query cost, WAL
+  append, slice and streaming recovery throughput, and snapshot encode
+  and decode round-trip throughput, each reporting Criterion slope or
+  median point estimates with 95 percent bootstrap confidence intervals,
+  with Throughput::Elements or Throughput::Bytes set per benchmark and
+  inputs and outputs wrapped in black_box. CI runs
   cargo bench --workspace -- --test on every PR so benchmark code can
   never rot uncompiled.
 - Golden vectors: frame.rs encode and decode are pinned against
@@ -1094,20 +1131,23 @@ runs explore new cases instead of re-proving one fixed stream.
 Each sweep echoes the seed in force, and any run reproduces
 locally with that seed.
 
-Four workflows stand beside CI. bench.yml runs the criterion
+Five workflows stand beside CI. `release.yml` builds precompiled
+Linux, macOS, and Windows `chronicle-cli` tarballs and `SHA256SUMS`
+on `v*.*.*` tag pushes and attaches them to the GitHub Release
+(matching `[package.metadata.binstall]`). `bench.yml` runs the criterion
 suite on dispatch and uploads the results that feed
-docs/PERFORMANCE.md. publish.yml packages one crate on
+docs/PERFORMANCE.md. `publish.yml` packages one crate on
 dispatch with a full verification build for a crates.io
-release. verify-published.yml proves the published crates
+release. `verify-published.yml` proves the published crates
 work from a stranger's machine; it runs on dispatch and
 weekly on a schedule (programme 4, lane U3), so a toolchain
 or registry change that breaks stranger consumption surfaces
-on its own. mutation-deep.yml runs the decoder mutation
+on its own. `mutation-deep.yml` runs the decoder mutation
 harness on dispatch at one hundred thousand cases per surface
-under a rotating seed. Three of the four also carry the cache
-step (programme 5, lane V2): bench.yml and mutation-deep.yml
-under the bench family, publish.yml under the package family.
-verify-published.yml is the exception; it builds the published
+under a rotating seed. Four of the five also carry the cache
+step: `release.yml` per target, `bench.yml` and `mutation-deep.yml`
+under the bench family, and `publish.yml` under the package family.
+`verify-published.yml` is the exception; it builds the published
 crates in a scratch project with no workspace lockfile, so the
 family keys do not apply to it.
 

@@ -12,7 +12,7 @@ use chronicle_core::{
     Book, BookConfig, DepthLevel, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId,
     Side, StpPolicy,
 };
-use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use std::hint::black_box;
 
 const fn bench_config() -> BookConfig {
@@ -72,14 +72,11 @@ fn depth_book() -> (Book, Vec<DepthLevel>) {
 }
 
 fn bench_depth(c: &mut Criterion) {
+    let (book, mut out) = depth_book();
     let mut group = c.benchmark_group("depth");
     group.throughput(Throughput::Elements(100));
     group.bench_function("depth_100_levels", |b| {
-        b.iter_batched(
-            depth_book,
-            |(book, mut out)| black_box(book.depth(Side::Bid, 100, &mut out)),
-            BatchSize::SmallInput,
-        );
+        b.iter(|| black_box(book.depth(Side::Bid, 100, black_box(&mut out))));
     });
     group.finish();
 }

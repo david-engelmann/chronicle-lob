@@ -5,8 +5,8 @@
 Security fixes apply to the newest published release of each
 crate and to the main branch. The crates are chronicle-core
 and chronicle-wal, with the chronicle-lob-cli binary. Older
-releases are not patched; upgrading to the newest release is
-the fix path.
+releases are not patched, and upgrading to the newest release
+is the fix path.
 
 ## Reporting a vulnerability
 

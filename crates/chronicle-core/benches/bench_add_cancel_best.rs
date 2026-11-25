@@ -86,17 +86,19 @@ const STREAM_FIRST_ID: u64 = 20_000;
 fn add_stream(book: &mut Book, storage: &mut Vec<ExecutionEvent>) {
     for i in 0..STREAM {
         let mut events = EventBuffer::new(&mut *storage);
-        book.add_order(
-            OrderId(STREAM_FIRST_ID + i),
-            ParticipantId(1),
-            Side::Bid,
-            OrderType::Limit,
-            100 + (i % 120),
-            5,
-            None,
-            &mut events,
-        )
-        .expect("stream add rests");
+        let written = book
+            .add_order(
+                black_box(OrderId(STREAM_FIRST_ID + i)),
+                black_box(ParticipantId(1)),
+                black_box(Side::Bid),
+                black_box(OrderType::Limit),
+                black_box(100 + (i % 120)),
+                black_box(5),
+                black_box(None),
+                &mut events,
+            )
+            .expect("stream add rests");
+        black_box(written);
         storage.clear();
     }
 }
@@ -129,8 +131,10 @@ fn bench_add_cancel_best(c: &mut Criterion) {
                 |(mut book, mut storage)| {
                     for i in 0..STREAM {
                         let mut events = EventBuffer::new(&mut storage);
-                        book.cancel_order(OrderId(STREAM_FIRST_ID + i), &mut events)
+                        let written = book
+                            .cancel_order(black_box(OrderId(STREAM_FIRST_ID + i)), &mut events)
                             .expect("stream cancel removes its target");
+                        black_box(written);
                         storage.clear();
                     }
                     (book, storage)
@@ -146,7 +150,10 @@ fn bench_add_cancel_best(c: &mut Criterion) {
         let mut group = c.benchmark_group("best_bid_ask");
         group.throughput(Throughput::Elements(1));
         group.bench_function("best_bid_ask", |b| {
-            b.iter(|| black_box((book.best_bid(), book.best_ask())));
+            b.iter(|| {
+                let book_ref = black_box(&book);
+                black_box((book_ref.best_bid(), book_ref.best_ask()))
+            });
         });
         group.finish();
     }

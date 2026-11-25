@@ -13,7 +13,7 @@ use chronicle_core::{
     Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId, Side,
     StpPolicy,
 };
-use chronicle_wal::{decode_snapshot, encode_snapshot};
+use chronicle_wal::{decode_snapshot, encode_snapshot, encoded_len};
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use std::hint::black_box;
 
@@ -74,15 +74,14 @@ fn occupied_book() -> Book {
 fn bench_snapshot(c: &mut Criterion) {
     let config = bench_config();
     let state = occupied_book().capture_snapshot_state();
-    let mut probe: Vec<u8> = Vec::new();
-    encode_snapshot(&state, &mut probe);
-    let encoded_len = u64::try_from(probe.len()).expect("snapshot length fits");
+    let total_bytes = encoded_len(&state);
+    let mut out: Vec<u8> = Vec::with_capacity(total_bytes);
+    let encoded_u64 = u64::try_from(total_bytes).expect("snapshot length fits");
     {
         let mut group = c.benchmark_group("snapshot");
-        group.throughput(Throughput::Bytes(encoded_len));
+        group.throughput(Throughput::Bytes(encoded_u64));
         group.bench_function("encode_decode_round_trip", |b| {
             b.iter(|| {
-                let mut out: Vec<u8> = Vec::new();
                 encode_snapshot(black_box(&state), &mut out);
                 let decoded = decode_snapshot(black_box(&out), black_box(&config))
                     .expect("the encoded snapshot decodes");

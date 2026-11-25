@@ -5,14 +5,15 @@
 //! reproduce it from the files alone.
 
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 use chronicle_core::{
     Book, BookConfig, CancelReason, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId,
     Side, SnapshotState, StpPolicy,
 };
-use chronicle_wal::{SyncPolicy, WalCommand, WalWriter, load_snapshot, save_snapshot};
+use chronicle_wal::{Crc32c, SyncPolicy, WalCommand, WalWriter, load_snapshot, save_snapshot};
 
 const BIN: &str = env!("CARGO_BIN_EXE_chronicle-cli");
 
@@ -666,5 +667,230 @@ fn verify_and_replay_stream_a_million_frame_log() {
         stdout_of(&output),
         "snapshot: written last_included_seq=1000000 live_orders=1000000\n"
     );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+fn write_wal_cycle(wal: &std::path::Path, book: &mut Book, cmds: &[WalCommand]) -> SnapshotState {
+    let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(64);
+    let file = fs::File::create(wal).expect("create wal cycle");
+    let mut writer = WalWriter::new(file, SyncPolicy::Never);
+    for cmd in cmds {
+        let seq = book.next_seq();
+        let mut events = EventBuffer::new(&mut storage);
+        cmd.apply(book, &mut events).expect("apply");
+        storage.clear();
+        writer.append(cmd, seq).expect("append");
+    }
+    book.capture_snapshot_state()
+}
+
+#[test]
+fn multi_cycle_checkpoint_and_snapshot_across_seams() {
+    let dir = test_dir("multi-checkpoint");
+    let wal = dir.join("book.wal");
+    let snap = dir.join("book.snap");
+    let preview_snap = dir.join("preview.snap");
+    let (wal_s, snap_s, preview_s) = (
+        wal.to_str().unwrap(),
+        snap.to_str().unwrap(),
+        preview_snap.to_str().unwrap(),
+    );
+    let mut live_book = Book::new(config()).expect("book");
+
+    // Cycle 1: seqs 1..=3 into book.wal, then Checkpoint #1.
+    let state_after_3 = write_wal_cycle(
+        &wal,
+        &mut live_book,
+        &[
+            add(1, 1, Side::Bid, 100, 10),
+            add(2, 2, Side::Ask, 102, 6),
+            add(3, 1, Side::Bid, 99, 5),
+        ],
+    );
+    let mut args1 = vec!["checkpoint", "--wal", wal_s, "--out", snap_s];
+    args1.extend(CONFIG_FLAGS);
+    let out1 = run_cli(&args1);
+    assert!(
+        out1.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out1.stderr)
+    );
+    assert!(!wal.exists() && dir.join("book.wal.archive-3").exists());
+    assert_eq!(load_snapshot(&snap, &config()).expect("#1"), state_after_3);
+
+    // Cycle 2: fresh book.wal starting at seq 4..=6.
+    let state_after_6 = write_wal_cycle(
+        &wal,
+        &mut live_book,
+        &[
+            add(4, 2, Side::Ask, 100, 4),
+            WalCommand::Amend {
+                order_id: OrderId(3),
+                new_price: 98,
+                new_qty: 8,
+            },
+            WalCommand::Cancel {
+                order_id: OrderId(2),
+            },
+        ],
+    );
+    let snap_out = run_cli(&[
+        "snapshot",
+        "--wal",
+        wal_s,
+        "--snapshot",
+        snap_s,
+        "--out",
+        preview_s,
+    ]);
+    assert!(snap_out.status.success());
+    assert_eq!(
+        stdout_of(&snap_out),
+        "snapshot: written last_included_seq=6 live_orders=2\n"
+    );
+    assert_eq!(
+        load_snapshot(&preview_snap, &config()).expect("preview"),
+        state_after_6
+    );
+
+    // Checkpoint #2 with in-place `--snapshot book.snap --out book.snap`.
+    let out2 = run_cli(&[
+        "checkpoint",
+        "--wal",
+        wal_s,
+        "--snapshot",
+        snap_s,
+        "--out",
+        snap_s,
+    ]);
+    assert!(out2.status.success());
+    let archive2 = dir.join("book.wal.archive-6");
+    assert_eq!(
+        stdout_of(&out2),
+        format!(
+            "checkpoint: written last_included_seq=6 live_orders=2 archived_log={}\n",
+            archive2.display()
+        )
+    );
+    assert!(!wal.exists() && archive2.exists());
+    assert_eq!(load_snapshot(&snap, &config()).expect("#2"), state_after_6);
+
+    // Cycle 3: fresh WAL starting at seq 7 replays cleanly from Checkpoint #2.
+    write_wal_cycle(&wal, &mut live_book, &[add(7, 3, Side::Ask, 105, 3)]);
+    let replay_out = run_cli(&[
+        "replay",
+        "--wal",
+        wal_s,
+        "--snapshot",
+        snap_s,
+        "--seed",
+        "77",
+    ]);
+    assert!(replay_out.status.success());
+    assert_eq!(stdout_of(&replay_out), "seed=77\n7 accepted order=7\n");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn verify_rejects_snapshot_with_zero_max_orders() {
+    let dir = test_dir("verify-zero-max-orders");
+    let wal = dir.join("empty.wal");
+    fs::write(&wal, []).expect("write empty wal");
+    let snap = dir.join("zero_max_orders.snap");
+
+    let grid_len = 64u32;
+    let total_len = 68usize + 20 * (grid_len as usize);
+    let mut bytes = vec![0u8; total_len];
+    bytes[0..4].copy_from_slice(b"CSNP");
+    bytes[4..6].copy_from_slice(&1u16.to_le_bytes());
+    bytes[6..8].copy_from_slice(&64u16.to_le_bytes());
+    bytes[8..16].copy_from_slice(&0u64.to_le_bytes());
+    bytes[16..24].copy_from_slice(&1u64.to_le_bytes());
+    bytes[24..28].copy_from_slice(&0u32.to_le_bytes());
+    bytes[28..32].copy_from_slice(&0u32.to_le_bytes()); // max_orders = 0
+    bytes[32..40].copy_from_slice(&1u64.to_le_bytes());
+    bytes[40..48].copy_from_slice(&1u64.to_le_bytes());
+    bytes[48..52].copy_from_slice(&grid_len.to_le_bytes());
+    bytes[52..56].copy_from_slice(&0u32.to_le_bytes());
+    bytes[56..60].copy_from_slice(&u32::MAX.to_le_bytes());
+    for i in 0..(grid_len as usize) {
+        let at = 64 + i * 20;
+        bytes[at..at + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        bytes[at + 4..at + 8].copy_from_slice(&u32::MAX.to_le_bytes());
+    }
+    let body_end = total_len - 4;
+    let mut crc = Crc32c::new();
+    crc.update(b"chronicle-snapshot/v1");
+    crc.update(&[0]);
+    crc.update(&bytes[..body_end]);
+    bytes[body_end..].copy_from_slice(&crc.finalize().to_le_bytes());
+    fs::write(&snap, &bytes).expect("write malformed snapshot");
+
+    let output = run_cli(&[
+        "verify",
+        "--wal",
+        wal.to_str().unwrap(),
+        "--snapshot",
+        snap.to_str().unwrap(),
+    ]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stdout_of(&output).starts_with("verdict: corrupt"),
+        "stdout was: {}",
+        stdout_of(&output)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn replay_exits_cleanly_on_broken_pipe() {
+    let dir = test_dir("broken-pipe");
+    let wal = dir.join("pipe.wal");
+    {
+        let file = fs::File::create(&wal).expect("create wal");
+        let mut writer = WalWriter::new(file, SyncPolicy::Never);
+        for seq in 1..=2_000_u64 {
+            writer
+                .append(&add(seq, 1, Side::Bid, 100, 1), seq)
+                .expect("append");
+        }
+    }
+    let mut child = Command::new(BIN)
+        .args([
+            "replay",
+            "--wal",
+            wal.to_str().unwrap(),
+            "--seed",
+            "0",
+            "--max-orders",
+            "4096",
+            "--grid-len",
+            "640",
+            "--tick-size",
+            "1",
+            "--grid-start-tick",
+            "1",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn replay");
+    {
+        let child_out = child.stdout.take().expect("piped stdout");
+        let mut reader = BufReader::new(child_out);
+        let mut line = String::new();
+        reader.read_line(&mut line).expect("read seed line");
+        assert_eq!(line, "seed=0\n");
+        // Drop `reader` (closing the read end of the pipe) while the
+        // child still has ~48 KiB of buffered events to flush.
+    }
+    let output = child.wait_with_output().expect("wait child");
+    assert!(
+        output.status.success(),
+        "expected exit 0 on BrokenPipe, got {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(output.stderr, b"");
     let _ = fs::remove_dir_all(&dir);
 }

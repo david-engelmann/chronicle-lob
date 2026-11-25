@@ -20,6 +20,11 @@ pub enum BookError {
         /// The rule the field violated.
         rule: &'static str,
     },
+    /// A [`crate::SnapshotState`] failed structural validation during restore.
+    InvalidSnapshot {
+        /// What structural invariant the snapshot state violated.
+        reason: &'static str,
+    },
     /// An order id of zero was supplied; zero is the lookup sentinel.
     InvalidOrderId {
         /// The offending order id (always zero).
@@ -113,6 +118,9 @@ impl fmt::Display for BookError {
                     f,
                     "invalid book configuration: field {field} violates rule: {rule}"
                 )
+            }
+            Self::InvalidSnapshot { reason } => {
+                write!(f, "invalid snapshot state: {reason}")
             }
             Self::InvalidOrderId { order_id } => {
                 write!(f, "invalid order id {}: zero is reserved", order_id.0)

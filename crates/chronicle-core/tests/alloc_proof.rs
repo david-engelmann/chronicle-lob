@@ -15,11 +15,26 @@
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
+use std::sync::Once;
 
 use chronicle_core::{
     Book, BookConfig, BookError, DepthLevel, EventBuffer, ExecutionEvent, OrderId, OrderType,
     ParticipantId, Side, StpPolicy,
 };
+
+const DEFAULT_SEED: u64 = 0xC0FF_EE11_2233_4455;
+static SEED_BANNER: Once = Once::new();
+
+fn active_seed() -> u64 {
+    let seed = std::env::var("SIM_SEED")
+        .ok()
+        .and_then(|raw| raw.parse().ok())
+        .unwrap_or(DEFAULT_SEED);
+    SEED_BANNER.call_once(|| {
+        eprintln!("SIM_SEED={seed}");
+    });
+    seed
+}
 
 thread_local! {
     static ALLOCATIONS: Cell<u64> = const { Cell::new(0) };
@@ -270,7 +285,23 @@ fn run_mixed_ops(
             let levels = book.depth(Side::Bid, 64, depth_out);
             let best = book.best_bid().map_or(0, |(_, qty)| qty)
                 + book.best_ask().map_or(0, |(_, qty)| qty);
-            std::hint::black_box((levels, best));
+            let spread = book.spread().unwrap_or(0);
+            let probe_id = OrderId(1 + (r >> 8) % 6000);
+            let info_qty = book.get_order(probe_id).map_or(0, |info| info.qty);
+            let present = book.contains_order(probe_id);
+            let probe_price = 250 + (r >> 9) % 100;
+            let level_qty = book
+                .level_at(probe_price)
+                .ok()
+                .flatten()
+                .map_or(0, |(_, d)| d.total_qty);
+            let iter_sum: u64 = book
+                .orders_at(probe_price)
+                .map_or(0, |it| it.map(|o| o.qty).sum());
+            let free_slots = book.free_order_count();
+            std::hint::black_box((
+                levels, best, spread, info_qty, present, level_qty, iter_sum, free_slots,
+            ));
             counters.applied += 1;
             continue;
         } else {
@@ -295,7 +326,7 @@ fn alloc_zero_steady_state_1m_ops() {
         total_qty: 0,
         order_count: 0,
     });
-    let mut rng = SplitMix64(0xC0FF_EE11_2233_4455);
+    let mut rng = SplitMix64(active_seed());
     let mut counters = Counters {
         events: 0,
         trades: 0,

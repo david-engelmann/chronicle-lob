@@ -13,8 +13,10 @@
 //! the same semantics independently, including its preflight
 //! rejections, so streams and errors are compared, never sampled.
 
+use std::sync::Once;
+
 use proptest::prelude::*;
-use proptest::test_runner::TestCaseResult;
+use proptest::test_runner::{Config, RngAlgorithm, TestCaseResult, TestRng, TestRunner};
 
 use crate::book::{Book, DepthLevel};
 use crate::config::BookConfig;
@@ -22,6 +24,66 @@ use crate::error::BookError;
 use crate::events::{CancelReason, EventBuffer, ExecutionEvent};
 use crate::reference_book::{OracleReject, ReferenceBook};
 use crate::types::{OrderId, OrderType, ParticipantId, Side, StpPolicy};
+
+static SEED_BANNER: Once = Once::new();
+
+/// Derive a deterministic 32-byte `ChaCha` PRNG seed from `sim_seed` and a
+/// test-specific `stream_id` using `FNV-1a` folded into `SplitMix64`.
+pub fn derive_chacha_seed(sim_seed: u64, stream_id: &str) -> [u8; 32] {
+    let mut hash: u64 = 0xCBF2_9CE4_8422_2325;
+    for &byte in stream_id.as_bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01B3);
+    }
+    let mut state = sim_seed ^ hash;
+    let mut next_u64 = || {
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    };
+    let mut seed = [0u8; 32];
+    for chunk in seed.as_chunks_mut::<8>().0 {
+        *chunk = next_u64().to_le_bytes();
+    }
+    seed
+}
+
+/// Build a deterministic `TestRunner` seeded from `SIM_SEED` (default `0`)
+/// and partitioned by `stream_id`, honouring `PROPTEST_CASES` and printing
+/// the active seed once per test binary (INV-DET-1, INV-DET-2).
+pub fn run_seeded_proptest<S>(
+    stream_id: &str,
+    strategy: S,
+    body: impl Fn(S::Value) -> TestCaseResult,
+) where
+    S: Strategy,
+{
+    let sim_seed: u64 = std::env::var("SIM_SEED")
+        .ok()
+        .and_then(|raw| raw.parse().ok())
+        .unwrap_or(0);
+    let default_cfg = Config::default();
+    let cases: u32 = std::env::var("PROPTEST_CASES")
+        .ok()
+        .and_then(|raw| raw.parse().ok())
+        .unwrap_or(default_cfg.cases);
+    SEED_BANNER.call_once(|| {
+        eprintln!("SIM_SEED={sim_seed} PROPTEST_CASES={cases}");
+    });
+    let chacha_seed = derive_chacha_seed(sim_seed, stream_id);
+    let config = Config {
+        cases,
+        failure_persistence: None,
+        ..default_cfg
+    };
+    let rng = TestRng::from_seed(RngAlgorithm::ChaCha, &chacha_seed);
+    let mut runner = TestRunner::new_with_rng(config, rng);
+    if let Err(err) = runner.run(&strategy, body) {
+        panic!("property {stream_id} failed (SIM_SEED={sim_seed} PROPTEST_CASES={cases}): {err}");
+    }
+}
 
 /// The default STP policy of [`test_book`], used to resolve an add's
 /// `None` policy for the oracle.
@@ -569,417 +631,731 @@ fn apply_op(book: &mut Book, oracle: &mut ReferenceBook, op: &Op) -> TestCaseRes
     Ok(())
 }
 
-proptest! {
-    /// The full command surface against the oracle: every event
-    /// stream and every rejection must match, after every command.
-    /// This one property carries INV-BOOK-2, INV-BOOK-4, INV-EVENT-3,
-    /// INV-AMEND-1 and 2, INV-ORD-3, and the oracle half of
-    /// INV-STP-3 and INV-CANCEL-1.
-    #[test]
-    fn prop_book_matches_reference(ops in prop::collection::vec(op_strategy(), 0..150)) {
-        let mut book = test_book();
-        let mut oracle = ReferenceBook::new();
-        for op in &ops {
-            apply_op(&mut book, &mut oracle, op)?;
-        }
-    }
+/// The full command surface against the oracle: every event
+/// stream and every rejection must match, after every command.
+/// This one property carries INV-BOOK-2, INV-BOOK-4, INV-EVENT-3,
+/// INV-AMEND-1 and 2, INV-ORD-3, and the oracle half of
+/// INV-STP-3 and INV-CANCEL-1.
+#[test]
+fn prop_book_matches_reference() {
+    run_seeded_proptest(
+        "prop_book_matches_reference",
+        prop::collection::vec(op_strategy(), 0..150),
+        |ops| {
+            let mut book = test_book();
+            let mut oracle = ReferenceBook::new();
+            for op in &ops {
+                apply_op(&mut book, &mut oracle, op)?;
+            }
+            Ok(())
+        },
+    );
+}
 
-    /// INV-BOOK-1 under an add/cancel/amend storm: the structural
-    /// checker (which asserts the uncrossed book) runs after every
-    /// command through `assert_agreement`.
-    #[test]
-    fn prop_add_cancel_amend_storm(ops in prop::collection::vec(storm_op_strategy(), 0..150)) {
-        let mut book = test_book();
-        let mut oracle = ReferenceBook::new();
-        for op in &ops {
-            apply_op(&mut book, &mut oracle, op)?;
-        }
-    }
+/// INV-BOOK-1 under an add/cancel/amend storm: the structural
+/// checker (which asserts the uncrossed book) runs after every
+/// command through `assert_agreement`.
+#[test]
+fn prop_add_cancel_amend_storm() {
+    run_seeded_proptest(
+        "prop_add_cancel_amend_storm",
+        prop::collection::vec(storm_op_strategy(), 0..150),
+        |ops| {
+            let mut book = test_book();
+            let mut oracle = ReferenceBook::new();
+            for op in &ops {
+                apply_op(&mut book, &mut oracle, op)?;
+            }
+            Ok(())
+        },
+    );
+}
 
-    /// INV-BOOK-4: quantity is conserved exactly. Every unit added is
-    /// resting, was cancelled while resting, or left in a trade, and a
-    /// trade removes the same quantity from the maker side as it
-    /// consumes from the taker, so:
-    /// added = resting + cancelled + 2 * traded.
-    /// Participants are fixed per side so no self-trade ever fires:
-    /// the identity is stated over plain Limit flow.
-    #[test]
-    fn prop_trade_quantity_conservation(ops in prop::collection::vec(limit_op_strategy(), 0..150)) {
-        let mut book = test_book();
-        let mut oracle = ReferenceBook::new();
-        let mut added: u128 = 0;
-        let mut cancelled: u128 = 0;
-        let mut traded: u128 = 0;
-        for op in ops {
-            match op {
-                Op::Add { id, is_bid, price, qty, .. } => {
-                    if oracle.contains(id) {
-                        continue;
-                    }
-                    let side = if is_bid { Side::Bid } else { Side::Ask };
-                    let participant = if is_bid { 1 } else { 2 };
-                    let events = oracle.add_limit(id, participant, side, price, qty);
-                    let mut storage = Vec::with_capacity(1024);
-                    {
-                        let mut buffer = EventBuffer::new(&mut storage);
-                        book.add_order(OrderId(id), ParticipantId(participant), side, OrderType::Limit, price, qty, None, &mut buffer)
+/// INV-BOOK-4: quantity is conserved exactly. Every unit added is
+/// resting, was cancelled while resting, or left in a trade, and a
+/// trade removes the same quantity from the maker side as it
+/// consumes from the taker, so:
+/// added = resting + cancelled + 2 * traded.
+/// Participants are fixed per side so no self-trade ever fires:
+/// the identity is stated over plain Limit flow.
+#[test]
+fn prop_trade_quantity_conservation() {
+    run_seeded_proptest(
+        "prop_trade_quantity_conservation",
+        prop::collection::vec(limit_op_strategy(), 0..150),
+        |ops| {
+            let mut book = test_book();
+            let mut oracle = ReferenceBook::new();
+            let mut added: u128 = 0;
+            let mut cancelled: u128 = 0;
+            let mut traded: u128 = 0;
+            for op in ops {
+                match op {
+                    Op::Add {
+                        id,
+                        is_bid,
+                        price,
+                        qty,
+                        ..
+                    } => {
+                        if oracle.contains(id) {
+                            continue;
+                        }
+                        let side = if is_bid { Side::Bid } else { Side::Ask };
+                        let participant = if is_bid { 1 } else { 2 };
+                        let events = oracle.add_limit(id, participant, side, price, qty);
+                        let mut storage = Vec::with_capacity(1024);
+                        {
+                            let mut buffer = EventBuffer::new(&mut storage);
+                            book.add_order(
+                                OrderId(id),
+                                ParticipantId(participant),
+                                side,
+                                OrderType::Limit,
+                                price,
+                                qty,
+                                None,
+                                &mut buffer,
+                            )
                             .expect("valid add");
-                    }
-                    added += u128::from(qty);
-                    for event in events {
-                        if let ExecutionEvent::Trade { qty: trade_qty, .. } = event {
-                            traded += u128::from(trade_qty);
+                        }
+                        added += u128::from(qty);
+                        for event in events {
+                            if let ExecutionEvent::Trade { qty: trade_qty, .. } = event {
+                                traded += u128::from(trade_qty);
+                            }
                         }
                     }
-                }
-                Op::Cancel { id } => {
-                    if let Some((_events, remaining)) = oracle.cancel(id) {
-                        let mut storage = Vec::with_capacity(64);
-                        let mut buffer = EventBuffer::new(&mut storage);
-                        book.cancel_order(OrderId(id), &mut buffer).expect("cancel");
-                        cancelled += u128::from(remaining);
+                    Op::Cancel { id } => {
+                        if let Some((_events, remaining)) = oracle.cancel(id) {
+                            let mut storage = Vec::with_capacity(64);
+                            let mut buffer = EventBuffer::new(&mut storage);
+                            book.cancel_order(OrderId(id), &mut buffer).expect("cancel");
+                            cancelled += u128::from(remaining);
+                        }
                     }
+                    _ => unreachable!("the limit stream has no other commands"),
                 }
-                _ => unreachable!("the limit stream has no other commands"),
+                let resting: u128 = [Side::Bid, Side::Ask]
+                    .iter()
+                    .flat_map(|side| oracle.depth(*side))
+                    .map(|(_, qty, _)| u128::from(qty))
+                    .sum();
+                prop_assert_eq!(
+                    added,
+                    resting + cancelled + 2 * traded,
+                    "quantity not conserved"
+                );
             }
-            let resting: u128 = [Side::Bid, Side::Ask]
-                .iter()
-                .flat_map(|side| oracle.depth(*side))
-                .map(|(_, qty, _)| u128::from(qty))
-                .sum();
-            prop_assert_eq!(added, resting + cancelled + 2 * traded, "quantity not conserved");
-        }
-    }
+            Ok(())
+        },
+    );
+}
 
-    /// INV-BITMAP-2: best prices from the bitmap hierarchy equal a
-    /// naive scan over every resting order.
-    #[test]
-    fn prop_best_price_matches_brute_force(ops in prop::collection::vec(limit_op_strategy(), 0..150)) {
-        let mut book = test_book();
-        let mut oracle = ReferenceBook::new();
-        for op in ops {
-            match op {
-                Op::Add { id, participant, is_bid, price, qty, .. } => {
-                    if !oracle.contains(id) {
-                        let side = if is_bid { Side::Bid } else { Side::Ask };
-                        oracle.add_limit(id, participant, side, price, qty);
-                        let mut storage = Vec::with_capacity(1024);
-                        let mut buffer = EventBuffer::new(&mut storage);
-                        book.add_order(OrderId(id), ParticipantId(participant), side, OrderType::Limit, price, qty, None, &mut buffer)
+/// INV-BITMAP-2: best prices from the bitmap hierarchy equal a
+/// naive scan over every resting order.
+#[test]
+fn prop_best_price_matches_brute_force() {
+    run_seeded_proptest(
+        "prop_best_price_matches_brute_force",
+        prop::collection::vec(limit_op_strategy(), 0..150),
+        |ops| {
+            let mut book = test_book();
+            let mut oracle = ReferenceBook::new();
+            for op in ops {
+                match op {
+                    Op::Add {
+                        id,
+                        participant,
+                        is_bid,
+                        price,
+                        qty,
+                        ..
+                    } => {
+                        if !oracle.contains(id) {
+                            let side = if is_bid { Side::Bid } else { Side::Ask };
+                            oracle.add_limit(id, participant, side, price, qty);
+                            let mut storage = Vec::with_capacity(1024);
+                            let mut buffer = EventBuffer::new(&mut storage);
+                            book.add_order(
+                                OrderId(id),
+                                ParticipantId(participant),
+                                side,
+                                OrderType::Limit,
+                                price,
+                                qty,
+                                None,
+                                &mut buffer,
+                            )
                             .expect("valid add");
+                        }
                     }
-                }
-                Op::Cancel { id } => {
-                    if oracle.cancel(id).is_some() {
-                        let mut storage = Vec::with_capacity(64);
-                        let mut buffer = EventBuffer::new(&mut storage);
-                        book.cancel_order(OrderId(id), &mut buffer).expect("cancel");
+                    Op::Cancel { id } => {
+                        if oracle.cancel(id).is_some() {
+                            let mut storage = Vec::with_capacity(64);
+                            let mut buffer = EventBuffer::new(&mut storage);
+                            book.cancel_order(OrderId(id), &mut buffer).expect("cancel");
+                        }
                     }
+                    _ => unreachable!("the limit stream has no other commands"),
                 }
-                _ => unreachable!("the limit stream has no other commands"),
+                prop_assert_eq!(book.best_bid(), oracle.best(Side::Bid));
+                prop_assert_eq!(book.best_ask(), oracle.best(Side::Ask));
+                book.debug_assert_invariants();
             }
-            prop_assert_eq!(book.best_bid(), oracle.best(Side::Bid));
-            prop_assert_eq!(book.best_ask(), oracle.best(Side::Ask));
-            book.debug_assert_invariants();
-        }
-    }
+            Ok(())
+        },
+    );
+}
 
-    /// INV-ORD-1: a Fok order that cannot fill in full mutates
-    /// nothing at all: full observable state and the sequence number
-    /// are bit-identical after the rejection. A Fok order that does
-    /// fill matches the oracle stream exactly.
-    #[test]
-    fn prop_fok_is_atomic(
-        prelude in prop::collection::vec(limit_op_strategy(), 0..40),
-        attempts in prop::collection::vec((25u64..=32, 0u32..3, any::<bool>(), 95u64..=106, 30u64..=120, 0u8..=3), 1..8)
-    ) {
-        let mut book = test_book();
-        let mut oracle = ReferenceBook::new();
-        for op in &prelude {
-            apply_op(&mut book, &mut oracle, op)?;
-        }
-        for (id, participant, is_bid, price, qty, stp_code) in attempts {
-            let side = if is_bid { Side::Bid } else { Side::Ask };
-            let before = state_of(&book);
-            let mut storage = Vec::with_capacity(1024);
-            let result = {
-                let mut events = EventBuffer::new(&mut storage);
-                book.add_order(OrderId(id), ParticipantId(participant), side, OrderType::Fok, price, qty, stp_of(stp_code), &mut events)
-            };
-            match result {
-                Err(BookError::FokInsufficientLiquidity { .. }) => {
-                    prop_assert_eq!(state_of(&book), before, "a failed Fok mutated the book");
-                    prop_assert!(storage.is_empty(), "a failed Fok wrote events");
-                }
-                Ok(_) => {
-                    let expected = oracle
-                        .add_typed(id, participant, side, OrderType::Fok, price, qty, stp_of(stp_code).unwrap_or(DEFAULT_STP))
-                        .expect("engine filled it, so the oracle fills it");
-                    prop_assert_eq!(storage, expected, "filled Fok stream diverged");
-                    assert_agreement(&book, &oracle);
-                }
-                Err(other) => {
-                    prop_assert!(false, "unexpected Fok error: {other:?}");
-                }
-            }
-        }
-    }
-
-    /// INV-ORD-2: a PostOnly order either rests in full (matching the
-    /// oracle) or is rejected with full state equality; after every
-    /// attempt the book is uncrossed.
-    #[test]
-    fn prop_post_only_never_crosses(
-        prelude in prop::collection::vec(op_strategy(), 0..60),
-        attempts in prop::collection::vec((25u64..=32, 0u32..3, any::<bool>(), 95u64..=106, 1u64..=20), 1..8)
-    ) {
-        let mut book = test_book();
-        let mut oracle = ReferenceBook::new();
-        for op in &prelude {
-            apply_op(&mut book, &mut oracle, op)?;
-        }
-        for (id, participant, is_bid, price, qty) in attempts {
-            if oracle.contains(id) {
-                continue;
-            }
-            let side = if is_bid { Side::Bid } else { Side::Ask };
-            let before = state_of(&book);
-            match oracle.add_typed(id, participant, side, OrderType::PostOnly, price, qty, DEFAULT_STP) {
-                Err(OracleReject::PostOnlyWouldCross { opposite_best }) => {
-                    let mut storage = Vec::with_capacity(64);
-                    let mut events = EventBuffer::new(&mut storage);
-                    let err = book
-                        .add_order(OrderId(id), ParticipantId(participant), side, OrderType::PostOnly, price, qty, None, &mut events)
-                        .expect_err("crossing PostOnly must be rejected");
-                    prop_assert_eq!(err, BookError::PostOnlyWouldCross { price, opposite_best });
-                    prop_assert_eq!(state_of(&book), before, "a rejected PostOnly mutated the book");
-                }
-                Ok(expected) => {
-                    let got = run_op(&mut book, &Op::Add { id, participant, is_bid, price, qty, kind: 6, stp_code: 0 }, 64)
-                        .expect("non-crossing PostOnly rests");
-                    prop_assert_eq!(got, expected);
-                    assert_agreement(&book, &oracle);
-                }
-                Err(other) => prop_assert!(false, "unexpected oracle verdict: {other:?}"),
-            }
-            if let (Some((bid, _)), Some((ask, _))) = (book.best_bid(), book.best_ask()) {
-                prop_assert!(bid < ask, "book crossed after a PostOnly attempt");
-            }
-        }
-    }
-
-    /// INV-ORD-3: an Ioc order never rests: after the command its id
-    /// is not live in either book, whatever it traded.
-    #[test]
-    fn prop_ioc_never_rests(
-        prelude in prop::collection::vec(op_strategy(), 0..60),
-        attempts in prop::collection::vec((25u64..=32, 0u32..3, any::<bool>(), 95u64..=106, 1u64..=30, 0u8..=3), 1..8)
-    ) {
-        let mut book = test_book();
-        let mut oracle = ReferenceBook::new();
-        for op in &prelude {
-            apply_op(&mut book, &mut oracle, op)?;
-        }
-        for (id, participant, is_bid, price, qty, stp_code) in attempts {
-            if oracle.contains(id) {
-                continue;
-            }
-            let side = if is_bid { Side::Bid } else { Side::Ask };
-            let expected = oracle
-                .add_typed(id, participant, side, OrderType::Ioc, price, qty, stp_of(stp_code).unwrap_or(DEFAULT_STP))
-                .expect("an Ioc add never rejects in preflight");
-            let got = run_op(&mut book, &Op::Add { id, participant, is_bid, price, qty, kind: 4, stp_code }, 1024)
-                .expect("ioc add");
-            prop_assert_eq!(got, expected, "ioc stream diverged");
-            prop_assert!(!oracle.contains(id), "oracle rests an Ioc order");
-            let mut storage = Vec::with_capacity(4);
-            let mut events = EventBuffer::new(&mut storage);
-            let err = book
-                .cancel_order(OrderId(id), &mut events)
-                .expect_err("an Ioc order is never live after its command");
-            prop_assert_eq!(err, BookError::OrderNotFound { order_id: OrderId(id) });
-            assert_agreement(&book, &oracle);
-        }
-    }
-
-    /// INV-ORD-4: the umbrella atomicity property. Invalid-biased
-    /// commands of every rejection kind leave full state and seq
-    /// bit-identical.
-    #[test]
-    fn prop_rejections_are_atomic(
-        prelude in prop::collection::vec(limit_op_strategy(), 0..40),
-        bad in prop::collection::vec(0u8..=10, 1..10)
-    ) {
-        let mut book = test_book();
-        let mut oracle = ReferenceBook::new();
-        for op in &prelude {
-            apply_op(&mut book, &mut oracle, op)?;
-        }
-        for kind in bad {
-            let live_id = oracle.orders.keys().next().copied();
-            let before = state_of(&book);
-            let mut storage = Vec::with_capacity(1024);
-            let result = {
-                let mut events = EventBuffer::new(&mut storage);
-                match kind {
-                    // Zero quantity add.
-                    0 => book.add_order(OrderId(40), ParticipantId(0), Side::Bid, OrderType::Limit, 100, 0, None, &mut events),
-                    // Zero order id add.
-                    1 => book.add_order(OrderId(0), ParticipantId(0), Side::Bid, OrderType::Limit, 100, 5, None, &mut events),
-                    // Off-grid price add (zero and far above the grid).
-                    2 => book.add_order(OrderId(40), ParticipantId(0), Side::Bid, OrderType::Limit, 9999, 5, None, &mut events),
-                    // Duplicate id add (skips when the book is empty).
-                    3 => match live_id {
-                        Some(id) => book.add_order(OrderId(id), ParticipantId(0), Side::Bid, OrderType::Limit, 100, 5, None, &mut events),
-                        None => book.add_order(OrderId(0), ParticipantId(0), Side::Bid, OrderType::Limit, 100, 5, None, &mut events),
-                    },
-                    // Fok far beyond any liquidity this book can hold.
-                    4 => book.add_order(OrderId(40), ParticipantId(0), Side::Bid, OrderType::Fok, 106, 500, None, &mut events),
-                    // PostOnly priced through the opposite best (skips
-                    // when the opposite side is empty).
-                    5 => match oracle.best(Side::Ask) {
-                        Some((best, _)) => book.add_order(OrderId(40), ParticipantId(0), Side::Bid, OrderType::PostOnly, best + 2, 5, None, &mut events),
-                        None => book.add_order(OrderId(0), ParticipantId(0), Side::Bid, OrderType::Limit, 100, 5, None, &mut events),
-                    },
-                    // Resting add with a zero-capacity buffer.
-                    6 => {
-                        let mut empty = Vec::new();
-                        let mut tiny = EventBuffer::new(&mut empty);
-                        book.add_order(OrderId(41), ParticipantId(0), Side::Bid, OrderType::Limit, 90, 5, None, &mut tiny)
-                    }
-                    // Amend of a never-seen id.
-                    7 => book.amend_order(OrderId(45), 100, 5, &mut events),
-                    // Cancel of a never-seen id.
-                    8 => book.cancel_order(OrderId(45), &mut events),
-                    // Amend of a live order to zero quantity (skips
-                    // when the book is empty).
-                    9 => match live_id {
-                        Some(id) => book.amend_order(OrderId(id), 100, 0, &mut events),
-                        None => book.cancel_order(OrderId(45), &mut events),
-                    },
-                    // Amend of a live order to an off-grid price.
-                    _ => match live_id {
-                        Some(id) => book.amend_order(OrderId(id), 0, 5, &mut events),
-                        None => book.cancel_order(OrderId(45), &mut events),
-                    },
-                }
-            };
-            prop_assert!(result.is_err(), "bad command kind {} was accepted", kind);
-            prop_assert!(storage.is_empty(), "rejected kind {} wrote events", kind);
-            prop_assert_eq!(state_of(&book), before, "rejected kind {} mutated the book", kind);
-        }
-    }
-
-    /// INV-AMEND-3: cancel and amend of missing or terminal ids are
-    /// exact no-ops. Probes use ids the stream may or may not have
-    /// made terminal; live ids are skipped (they are not missing).
-    #[test]
-    fn prop_cancel_amend_missing_id_is_noop(
-        ops in prop::collection::vec(op_strategy(), 0..80),
-        probes in prop::collection::vec((1u64..=48, any::<bool>()), 1..10)
-    ) {
-        let mut book = test_book();
-        let mut oracle = ReferenceBook::new();
-        for op in &ops {
-            apply_op(&mut book, &mut oracle, op)?;
-        }
-        for (id, is_cancel) in probes {
-            if oracle.contains(id) {
-                continue;
-            }
-            let before = state_of(&book);
-            let mut storage = Vec::with_capacity(4);
-            let mut events = EventBuffer::new(&mut storage);
-            let err = if is_cancel {
-                book.cancel_order(OrderId(id), &mut events)
-                    .expect_err("cancel of a missing id")
-            } else {
-                book.amend_order(OrderId(id), 100, 5, &mut events)
-                    .expect_err("amend of a missing id")
-            };
-            prop_assert_eq!(err, BookError::OrderNotFound { order_id: OrderId(id) });
-            prop_assert_eq!(state_of(&book), before, "a missing-id command mutated the book");
-        }
-    }
-
-    /// INV-CANCEL-1 with a two-participant pool, so mass cancels bite
-    /// often: the cancelled set matches the oracle exactly and the
-    /// survivors agree.
-    #[test]
-    fn prop_cancel_by_participant_exact_set(
-        ops in prop::collection::vec(
-            prop_oneof![
-                5 => (1u64..=24, 0u32..2, any::<bool>(), 95u64..=106, 1u64..=20, 0u8..=6, 0u8..=3).prop_map(
-                    |(id, participant, is_bid, price, qty, kind, stp_code)| Op::Add {
-                        id, participant, is_bid, price, qty, kind, stp_code
-                    }
+/// INV-ORD-1: a `Fok` order that cannot fill in full mutates
+/// nothing at all: full observable state and the sequence number
+/// are bit-identical after the rejection. A `Fok` order that does
+/// fill matches the oracle stream exactly.
+#[test]
+fn prop_fok_is_atomic() {
+    run_seeded_proptest(
+        "prop_fok_is_atomic",
+        (
+            prop::collection::vec(limit_op_strategy(), 0..40),
+            prop::collection::vec(
+                (
+                    25u64..=32,
+                    0u32..3,
+                    any::<bool>(),
+                    95u64..=106,
+                    30u64..=120,
+                    0u8..=3,
                 ),
+                1..8,
+            ),
+        ),
+        |(prelude, attempts)| {
+            let mut book = test_book();
+            let mut oracle = ReferenceBook::new();
+            for op in &prelude {
+                apply_op(&mut book, &mut oracle, op)?;
+            }
+            for (id, participant, is_bid, price, qty, stp_code) in attempts {
+                let side = if is_bid { Side::Bid } else { Side::Ask };
+                let before = state_of(&book);
+                let mut storage = Vec::with_capacity(1024);
+                let result = {
+                    let mut events = EventBuffer::new(&mut storage);
+                    book.add_order(
+                        OrderId(id),
+                        ParticipantId(participant),
+                        side,
+                        OrderType::Fok,
+                        price,
+                        qty,
+                        stp_of(stp_code),
+                        &mut events,
+                    )
+                };
+                match result {
+                    Err(BookError::FokInsufficientLiquidity { .. }) => {
+                        prop_assert_eq!(state_of(&book), before, "a failed Fok mutated the book");
+                        prop_assert!(storage.is_empty(), "a failed Fok wrote events");
+                    }
+                    Ok(_) => {
+                        let expected = oracle
+                            .add_typed(
+                                id,
+                                participant,
+                                side,
+                                OrderType::Fok,
+                                price,
+                                qty,
+                                stp_of(stp_code).unwrap_or(DEFAULT_STP),
+                            )
+                            .expect("engine filled it, so the oracle fills it");
+                        prop_assert_eq!(storage, expected, "filled Fok stream diverged");
+                        assert_agreement(&book, &oracle);
+                    }
+                    Err(other) => {
+                        prop_assert!(false, "unexpected Fok error: {other:?}");
+                    }
+                }
+            }
+            Ok(())
+        },
+    );
+}
+
+/// INV-ORD-2: a `PostOnly` order either rests in full (matching the
+/// oracle) or is rejected with full state equality; after every
+/// attempt the book is uncrossed.
+#[test]
+fn prop_post_only_never_crosses() {
+    run_seeded_proptest(
+        "prop_post_only_never_crosses",
+        (
+            prop::collection::vec(op_strategy(), 0..60),
+            prop::collection::vec(
+                (25u64..=32, 0u32..3, any::<bool>(), 95u64..=106, 1u64..=20),
+                1..8,
+            ),
+        ),
+        |(prelude, attempts)| {
+            let mut book = test_book();
+            let mut oracle = ReferenceBook::new();
+            for op in &prelude {
+                apply_op(&mut book, &mut oracle, op)?;
+            }
+            for (id, participant, is_bid, price, qty) in attempts {
+                if oracle.contains(id) {
+                    continue;
+                }
+                let side = if is_bid { Side::Bid } else { Side::Ask };
+                let before = state_of(&book);
+                match oracle.add_typed(
+                    id,
+                    participant,
+                    side,
+                    OrderType::PostOnly,
+                    price,
+                    qty,
+                    DEFAULT_STP,
+                ) {
+                    Err(OracleReject::PostOnlyWouldCross { opposite_best }) => {
+                        let mut storage = Vec::with_capacity(64);
+                        let mut events = EventBuffer::new(&mut storage);
+                        let err = book
+                            .add_order(
+                                OrderId(id),
+                                ParticipantId(participant),
+                                side,
+                                OrderType::PostOnly,
+                                price,
+                                qty,
+                                None,
+                                &mut events,
+                            )
+                            .expect_err("crossing PostOnly must be rejected");
+                        prop_assert_eq!(
+                            err,
+                            BookError::PostOnlyWouldCross {
+                                price,
+                                opposite_best
+                            }
+                        );
+                        prop_assert_eq!(
+                            state_of(&book),
+                            before,
+                            "a rejected PostOnly mutated the book"
+                        );
+                    }
+                    Ok(expected) => {
+                        let got = run_op(
+                            &mut book,
+                            &Op::Add {
+                                id,
+                                participant,
+                                is_bid,
+                                price,
+                                qty,
+                                kind: 6,
+                                stp_code: 0,
+                            },
+                            64,
+                        )
+                        .expect("non-crossing PostOnly rests");
+                        prop_assert_eq!(got, expected);
+                        assert_agreement(&book, &oracle);
+                    }
+                    Err(other) => prop_assert!(false, "unexpected oracle verdict: {other:?}"),
+                }
+                if let (Some((bid, _)), Some((ask, _))) = (book.best_bid(), book.best_ask()) {
+                    prop_assert!(bid < ask, "book crossed after a PostOnly attempt");
+                }
+            }
+            Ok(())
+        },
+    );
+}
+
+/// INV-ORD-3: an `Ioc` order never rests: after the command its id
+/// is not live in either book, whatever it traded.
+#[test]
+fn prop_ioc_never_rests() {
+    run_seeded_proptest(
+        "prop_ioc_never_rests",
+        (
+            prop::collection::vec(op_strategy(), 0..60),
+            prop::collection::vec(
+                (
+                    25u64..=32,
+                    0u32..3,
+                    any::<bool>(),
+                    95u64..=106,
+                    1u64..=30,
+                    0u8..=3,
+                ),
+                1..8,
+            ),
+        ),
+        |(prelude, attempts)| {
+            let mut book = test_book();
+            let mut oracle = ReferenceBook::new();
+            for op in &prelude {
+                apply_op(&mut book, &mut oracle, op)?;
+            }
+            for (id, participant, is_bid, price, qty, stp_code) in attempts {
+                if oracle.contains(id) {
+                    continue;
+                }
+                let side = if is_bid { Side::Bid } else { Side::Ask };
+                let expected = oracle
+                    .add_typed(
+                        id,
+                        participant,
+                        side,
+                        OrderType::Ioc,
+                        price,
+                        qty,
+                        stp_of(stp_code).unwrap_or(DEFAULT_STP),
+                    )
+                    .expect("an Ioc add never rejects in preflight");
+                let got = run_op(
+                    &mut book,
+                    &Op::Add {
+                        id,
+                        participant,
+                        is_bid,
+                        price,
+                        qty,
+                        kind: 4,
+                        stp_code,
+                    },
+                    1024,
+                )
+                .expect("ioc add");
+                prop_assert_eq!(got, expected, "ioc stream diverged");
+                prop_assert!(!oracle.contains(id), "oracle rests an Ioc order");
+                let mut storage = Vec::with_capacity(4);
+                let mut events = EventBuffer::new(&mut storage);
+                let err = book
+                    .cancel_order(OrderId(id), &mut events)
+                    .expect_err("an Ioc order is never live after its command");
+                prop_assert_eq!(
+                    err,
+                    BookError::OrderNotFound {
+                        order_id: OrderId(id)
+                    }
+                );
+                assert_agreement(&book, &oracle);
+            }
+            Ok(())
+        },
+    );
+}
+
+fn bad_bid_add(
+    book: &mut Book,
+    id: u64,
+    order_type: OrderType,
+    price: u64,
+    qty: u64,
+    events: &mut EventBuffer<'_>,
+) -> Result<usize, BookError> {
+    book.add_order(
+        OrderId(id),
+        ParticipantId(0),
+        Side::Bid,
+        order_type,
+        price,
+        qty,
+        None,
+        events,
+    )
+}
+
+/// Execute one invalid-biased command of `kind` for
+/// `prop_rejections_are_atomic`.
+fn apply_bad_kind(
+    book: &mut Book,
+    oracle: &ReferenceBook,
+    kind: u8,
+    live_id: Option<u64>,
+    storage: &mut Vec<ExecutionEvent>,
+) -> Result<usize, BookError> {
+    let mut events = EventBuffer::new(storage);
+    match kind {
+        0 => bad_bid_add(book, 40, OrderType::Limit, 100, 0, &mut events),
+        1 => bad_bid_add(book, 0, OrderType::Limit, 100, 5, &mut events),
+        2 => bad_bid_add(book, 40, OrderType::Limit, 9999, 5, &mut events),
+        3 => bad_bid_add(
+            book,
+            live_id.unwrap_or(0),
+            OrderType::Limit,
+            100,
+            5,
+            &mut events,
+        ),
+        4 => bad_bid_add(book, 40, OrderType::Fok, 106, 500, &mut events),
+        5 => match oracle.best(Side::Ask) {
+            Some((best, _)) => bad_bid_add(book, 40, OrderType::PostOnly, best + 2, 5, &mut events),
+            None => bad_bid_add(book, 0, OrderType::Limit, 100, 5, &mut events),
+        },
+        6 => {
+            let mut empty = Vec::new();
+            let mut tiny = EventBuffer::new(&mut empty);
+            bad_bid_add(book, 41, OrderType::Limit, 90, 5, &mut tiny)
+        }
+        7 => book.amend_order(OrderId(45), 100, 5, &mut events),
+        8 => book.cancel_order(OrderId(45), &mut events),
+        9 => match live_id {
+            Some(id) => book.amend_order(OrderId(id), 100, 0, &mut events),
+            None => book.cancel_order(OrderId(45), &mut events),
+        },
+        _ => match live_id {
+            Some(id) => book.amend_order(OrderId(id), 0, 5, &mut events),
+            None => book.cancel_order(OrderId(45), &mut events),
+        },
+    }
+}
+
+/// INV-ORD-4: the umbrella atomicity property. Invalid-biased
+/// commands of every rejection kind leave full state and seq
+/// bit-identical.
+#[test]
+fn prop_rejections_are_atomic() {
+    run_seeded_proptest(
+        "prop_rejections_are_atomic",
+        (
+            prop::collection::vec(limit_op_strategy(), 0..40),
+            prop::collection::vec(0u8..=10, 1..10),
+        ),
+        |(prelude, bad)| {
+            let mut book = test_book();
+            let mut oracle = ReferenceBook::new();
+            for op in &prelude {
+                apply_op(&mut book, &mut oracle, op)?;
+            }
+            for kind in bad {
+                let live_id = oracle.orders.keys().next().copied();
+                let before = state_of(&book);
+                let mut storage = Vec::with_capacity(1024);
+                let result = apply_bad_kind(&mut book, &oracle, kind, live_id, &mut storage);
+                prop_assert!(result.is_err(), "bad command kind {} was accepted", kind);
+                prop_assert!(storage.is_empty(), "rejected kind {} wrote events", kind);
+                prop_assert_eq!(
+                    state_of(&book),
+                    before,
+                    "rejected kind {} mutated the book",
+                    kind
+                );
+            }
+            Ok(())
+        },
+    );
+}
+
+/// INV-AMEND-3: cancel and amend of missing or terminal ids are
+/// exact no-ops. Probes use ids the stream may or may not have
+/// made terminal; live ids are skipped (they are not missing).
+#[test]
+fn prop_cancel_amend_missing_id_is_noop() {
+    run_seeded_proptest(
+        "prop_cancel_amend_missing_id_is_noop",
+        (
+            prop::collection::vec(op_strategy(), 0..80),
+            prop::collection::vec((1u64..=48, any::<bool>()), 1..10),
+        ),
+        |(ops, probes)| {
+            let mut book = test_book();
+            let mut oracle = ReferenceBook::new();
+            for op in &ops {
+                apply_op(&mut book, &mut oracle, op)?;
+            }
+            for (id, is_cancel) in probes {
+                if oracle.contains(id) {
+                    continue;
+                }
+                let before = state_of(&book);
+                let mut storage = Vec::with_capacity(4);
+                let mut events = EventBuffer::new(&mut storage);
+                let err = if is_cancel {
+                    book.cancel_order(OrderId(id), &mut events)
+                        .expect_err("cancel of a missing id")
+                } else {
+                    book.amend_order(OrderId(id), 100, 5, &mut events)
+                        .expect_err("amend of a missing id")
+                };
+                prop_assert_eq!(
+                    err,
+                    BookError::OrderNotFound {
+                        order_id: OrderId(id)
+                    }
+                );
+                prop_assert_eq!(
+                    state_of(&book),
+                    before,
+                    "a missing-id command mutated the book"
+                );
+            }
+            Ok(())
+        },
+    );
+}
+
+/// INV-CANCEL-1 with a two-participant pool, so mass cancels bite
+/// often: the cancelled set matches the oracle exactly and the
+/// survivors agree.
+#[test]
+fn prop_cancel_by_participant_exact_set() {
+    run_seeded_proptest(
+        "prop_cancel_by_participant_exact_set",
+        prop::collection::vec(
+            prop_oneof![
+                5 => (
+                    1u64..=24,
+                    0u32..2,
+                    any::<bool>(),
+                    95u64..=106,
+                    1u64..=20,
+                    0u8..=6,
+                    0u8..=3,
+                )
+                    .prop_map(|(id, participant, is_bid, price, qty, kind, stp_code)| Op::Add {
+                        id,
+                        participant,
+                        is_bid,
+                        price,
+                        qty,
+                        kind,
+                        stp_code,
+                    }),
                 2 => (1u64..=24).prop_map(|id| Op::Cancel { id }),
                 2 => (0u32..2).prop_map(|participant| Op::CancelByParticipant { participant }),
             ],
-            0..150
-        )
-    ) {
-        let mut book = test_book();
-        let mut oracle = ReferenceBook::new();
-        for op in &ops {
-            apply_op(&mut book, &mut oracle, op)?;
-        }
-    }
+            0..150,
+        ),
+        |ops| {
+            let mut book = test_book();
+            let mut oracle = ReferenceBook::new();
+            for op in &ops {
+                apply_op(&mut book, &mut oracle, op)?;
+            }
+            Ok(())
+        },
+    );
+}
 
-    /// INV-STP-3 property coverage: a two-participant pool and an
-    /// explicit policy on every add, so self-trades fire constantly
-    /// and every policy is exercised against the oracle.
-    #[test]
-    fn prop_stp_policies_match_oracle(
-        ops in prop::collection::vec(
+/// INV-STP-3 property coverage: a two-participant pool and an
+/// explicit policy on every add, so self-trades fire constantly
+/// and every policy is exercised against the oracle.
+#[test]
+fn prop_stp_policies_match_oracle() {
+    run_seeded_proptest(
+        "prop_stp_policies_match_oracle",
+        prop::collection::vec(
             prop_oneof![
-                6 => (1u64..=24, 0u32..2, any::<bool>(), 95u64..=106, 1u64..=20, 0u8..=6, 1u8..=3).prop_map(
-                    |(id, participant, is_bid, price, qty, kind, stp_code)| Op::Add {
-                        id, participant, is_bid, price, qty, kind, stp_code
-                    }
-                ),
+                6 => (
+                    1u64..=24,
+                    0u32..2,
+                    any::<bool>(),
+                    95u64..=106,
+                    1u64..=20,
+                    0u8..=6,
+                    1u8..=3,
+                )
+                    .prop_map(|(id, participant, is_bid, price, qty, kind, stp_code)| Op::Add {
+                        id,
+                        participant,
+                        is_bid,
+                        price,
+                        qty,
+                        kind,
+                        stp_code,
+                    }),
                 2 => (1u64..=24).prop_map(|id| Op::Cancel { id }),
-                1 => (1u64..=24, 95u64..=106, 1u64..=20).prop_map(|(id, new_price, new_qty)| Op::Amend {
-                    id, new_price, new_qty
+                1 => (1u64..=24, 95u64..=106, 1u64..=20).prop_map(|(id, new_price, new_qty)| {
+                    Op::Amend {
+                        id,
+                        new_price,
+                        new_qty,
+                    }
                 }),
                 1 => (0u32..2).prop_map(|participant| Op::CancelByParticipant { participant }),
             ],
-            0..150
-        )
-    ) {
-        let mut book = test_book();
-        let mut oracle = ReferenceBook::new();
-        for op in &ops {
-            apply_op(&mut book, &mut oracle, op)?;
-        }
+            0..150,
+        ),
+        |ops| {
+            let mut book = test_book();
+            let mut oracle = ReferenceBook::new();
+            for op in &ops {
+                apply_op(&mut book, &mut oracle, op)?;
+            }
+            Ok(())
+        },
+    );
+}
+
+/// INV-EVENT-2: starving a command with a too-small buffer and
+/// then retrying it with a sufficient one produces the identical
+/// stream and state as running it once with a sufficient buffer.
+#[test]
+fn prop_event_buffer_retry_is_identical() {
+    run_seeded_proptest(
+        "prop_event_buffer_retry_is_identical",
+        prop::collection::vec(
+            (op_strategy(), 0usize..=3).prop_map(|(op, cap)| (op, cap)),
+            0..120,
+        ),
+        |ops| {
+            let mut starved = test_book();
+            let mut fed = test_book();
+            for (op, cap) in &ops {
+                let expected = run_op(&mut fed, op, 4096);
+                match run_op(&mut starved, op, *cap) {
+                    Err(BookError::EventBufferFull { .. }) => {
+                        let retried = run_op(&mut starved, op, 4096);
+                        prop_assert_eq!(retried, expected, "retry after EventBufferFull diverged");
+                    }
+                    other => {
+                        prop_assert_eq!(
+                            other,
+                            expected,
+                            "small-buffer run diverged without starving"
+                        );
+                    }
+                }
+                prop_assert_eq!(
+                    state_of(&starved),
+                    state_of(&fed),
+                    "state diverged after retry"
+                );
+                starved.debug_assert_invariants();
+            }
+            Ok(())
+        },
+    );
+}
+
+#[test]
+fn seeded_proptest_runner_is_deterministic_per_stream() {
+    fn sample_stream(seed: u64, stream_id: &str) -> Vec<u64> {
+        let chacha = derive_chacha_seed(seed, stream_id);
+        let config = Config {
+            cases: 16,
+            failure_persistence: None,
+            ..Config::default()
+        };
+        let rng = TestRng::from_seed(RngAlgorithm::ChaCha, &chacha);
+        let mut runner = TestRunner::new_with_rng(config, rng);
+        let out = std::cell::RefCell::new(Vec::new());
+        runner
+            .run(&(1u64..1_000_000), |v| {
+                out.borrow_mut().push(v);
+                Ok(())
+            })
+            .expect("collect sample stream");
+        out.into_inner()
     }
 
-    /// INV-EVENT-2: starving a command with a too-small buffer and
-    /// then retrying it with a sufficient one produces the identical
-    /// stream and state as running it once with a sufficient buffer.
-    #[test]
-    fn prop_event_buffer_retry_is_identical(
-        ops in prop::collection::vec(
-            (op_strategy(), 0usize..=3).prop_map(|(op, cap)| (op, cap)),
-            0..120
-        )
-    ) {
-        let mut starved = test_book();
-        let mut fed = test_book();
-        for (op, cap) in &ops {
-            let expected = run_op(&mut fed, op, 4096);
-            match run_op(&mut starved, op, *cap) {
-                Err(BookError::EventBufferFull { .. }) => {
-                    let retried = run_op(&mut starved, op, 4096);
-                    prop_assert_eq!(retried, expected, "retry after EventBufferFull diverged");
-                }
-                other => {
-                    prop_assert_eq!(other, expected, "small-buffer run diverged without starving");
-                }
-            }
-            prop_assert_eq!(state_of(&starved), state_of(&fed), "state diverged after retry");
-            starved.debug_assert_invariants();
-        }
-    }
+    assert_eq!(sample_stream(42, "alpha"), sample_stream(42, "alpha"));
+    assert_ne!(sample_stream(42, "alpha"), sample_stream(43, "alpha"));
+    assert_ne!(sample_stream(42, "alpha"), sample_stream(42, "beta"));
 }

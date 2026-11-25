@@ -3,7 +3,7 @@
 
 use chronicle_core::{
     Book, BookConfig, BookError, CancelReason, DepthLevel, EventBuffer, ExecutionEvent, OrderId,
-    OrderType, ParticipantId, Side, StpPolicy,
+    OrderInfo, OrderType, ParticipantId, Side, StpPolicy,
 };
 
 fn sample_book() -> Book {
@@ -317,4 +317,138 @@ fn public_api_milestone_2_ioc_and_mass_cancel() {
     assert_eq!(book.best_ask(), None);
     assert_eq!(book.live_order_count(), 1);
     book.debug_assert_invariants();
+}
+
+#[test]
+fn public_api_config_bounds_and_event_clear() {
+    let book = sample_book();
+    let cfg = book.config();
+    assert_eq!(cfg.min_price(), 500);
+    assert_eq!(cfg.max_price().expect("valid max price"), 41_455);
+    assert_eq!(book.free_order_count(), 128);
+    assert_eq!(book.spread(), None);
+    assert!(!book.contains_order(OrderId(0)));
+    assert_eq!(book.get_order(OrderId(0)), None);
+
+    // Zero grid_start_tick still reports tick 1 as min_price because 0 is off-grid.
+    let zero_start = BookConfig {
+        max_orders: 16,
+        grid_len: 64,
+        tick_size: 5,
+        grid_start_tick: 0,
+        default_stp: StpPolicy::CancelIncoming,
+    };
+    let mut zero_book = Book::new(zero_start).expect("valid zero-start config");
+    assert_eq!(zero_start.min_price(), 5);
+    assert_eq!(zero_start.max_price().unwrap(), 315);
+
+    let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(64);
+    let mut events = EventBuffer::new(&mut storage);
+    zero_book
+        .add_order(
+            OrderId(1),
+            ParticipantId(1),
+            Side::Bid,
+            OrderType::Limit,
+            zero_start.min_price(),
+            3,
+            None,
+            &mut events,
+        )
+        .expect("min_price is accepted");
+    events.clear();
+    assert_eq!(events.written(), []);
+}
+
+#[test]
+fn public_api_domain_queries_and_orders_at() {
+    let mut book = sample_book();
+    let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(64);
+    let mut events = EventBuffer::new(&mut storage);
+
+    // Add three bids at 1000 and an ask at 1015 to exercise get_order,
+    // contains_order, spread, level_at, orders_at (FIFO and reverse),
+    // EventBuffer::clear, and Book Debug formatting.
+    for (id, participant, qty) in [(10u64, 1u32, 5u64), (11, 2, 7), (12, 3, 9)] {
+        book.add_order(
+            OrderId(id),
+            ParticipantId(participant),
+            Side::Bid,
+            OrderType::Limit,
+            1000,
+            qty,
+            None,
+            &mut events,
+        )
+        .expect("bid rests");
+        assert_eq!(events.written().len(), 1);
+        events.clear();
+    }
+    book.add_order(
+        OrderId(20),
+        ParticipantId(4),
+        Side::Ask,
+        OrderType::Limit,
+        1015,
+        12,
+        None,
+        &mut events,
+    )
+    .expect("ask rests");
+    events.clear();
+
+    assert_eq!(book.live_order_count(), 4);
+    assert_eq!(book.free_order_count(), 124);
+    assert_eq!(book.spread(), Some(15));
+    assert!(book.contains_order(OrderId(11)));
+    assert!(!book.contains_order(OrderId(999)));
+    assert_eq!(
+        book.get_order(OrderId(11)),
+        Some(OrderInfo {
+            order_id: OrderId(11),
+            participant: ParticipantId(2),
+            side: Side::Bid,
+            price: 1000,
+            qty: 7,
+        })
+    );
+
+    assert_eq!(
+        book.level_at(1000),
+        Ok(Some((
+            Side::Bid,
+            DepthLevel {
+                price: 1000,
+                total_qty: 21,
+                order_count: 3,
+            }
+        )))
+    );
+    assert_eq!(book.level_at(1005), Ok(None));
+    assert!(matches!(
+        book.level_at(1001),
+        Err(BookError::InvalidPriceTick { .. })
+    ));
+
+    let fifo: Vec<OrderId> = book
+        .orders_at(1000)
+        .expect("valid tick")
+        .map(|o| o.order_id)
+        .collect();
+    assert_eq!(fifo, vec![OrderId(10), OrderId(11), OrderId(12)]);
+
+    let mut iter = book.orders_at(1000).expect("valid tick");
+    assert_eq!(iter.len(), 3);
+    assert_eq!(iter.next().map(|o| o.order_id), Some(OrderId(10)));
+    assert_eq!(iter.next_back().map(|o| o.order_id), Some(OrderId(12)));
+    assert_eq!(iter.len(), 1);
+    assert_eq!(iter.next_back().map(|o| o.order_id), Some(OrderId(11)));
+    assert_eq!(iter.len(), 0);
+    assert_eq!(iter.next(), None);
+    assert_eq!(iter.next_back(), None);
+
+    let dbg = format!("{book:?}");
+    assert!(dbg.contains("Book"));
+    assert!(dbg.contains("live_orders: 4"));
+    assert!(dbg.contains("free_orders: 124"));
 }
