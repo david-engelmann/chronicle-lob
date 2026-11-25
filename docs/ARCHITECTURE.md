@@ -1104,7 +1104,12 @@ weekly on a schedule (programme 4, lane U3), so a toolchain
 or registry change that breaks stranger consumption surfaces
 on its own. mutation-deep.yml runs the decoder mutation
 harness on dispatch at one hundred thousand cases per surface
-under a rotating seed.
+under a rotating seed. Three of the four also carry the cache
+step (programme 5, lane V2): bench.yml and mutation-deep.yml
+under the bench family, publish.yml under the package family.
+verify-published.yml is the exception; it builds the published
+crates in a scratch project with no workspace lockfile, so the
+family keys do not apply to it.
 
 One operational note. The macOS test leg is occasionally
 cancelled by the runner infrastructure under load, five times
