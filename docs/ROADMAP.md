@@ -1069,3 +1069,35 @@ Programme 11 is complete: AB1 landed at 644f3d55
 (PR #67), and this closure record is AB2. The K set
 held one lane, the sweep record, and it is closed.
 DC-5 remains open as David's call.
+
+## Programme 12: the L set (opened 2026-11-25)
+
+The first pass audited two surfaces no programme
+had covered: the documentation's links and the
+repository's own GitHub settings. The links closed
+clean: the fourteen markdown files carry no
+external URLs at all, and exactly one relative
+link (the demo embed), which resolves.
+
+L-1: the repository allowed all three merge
+methods while its entire history is single-parent
+squash landings, the shape programme 11's
+merge-integrity practice depends on. One web-UI
+merge with the wrong method would break the linear
+history and the parent-diff auditability with it.
+The settings also carried an enabled but
+contentless wiki.
+
+### Lane AC1: tighten the merge settings
+
+Applied through the API and verified by read-back
+in the same pass: allow_merge_commit and
+allow_rebase_merge are now false, squash remains
+the one method, and the wiki is disabled.
+delete_branch_on_merge was considered and
+deliberately left off: auto-deleting a merged
+stack parent's branch closes a child PR based on
+it, and the manual delete after each landing is
+cheap insurance against that hazard. This record
+is the lane's other half; AC2 closes the
+programme.
