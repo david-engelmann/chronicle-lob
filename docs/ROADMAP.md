@@ -1203,3 +1203,25 @@ forms beside the single-point, multi-point, and
 streaming pair forms). All fifteen passed. No
 panic and no conviction, so no repair lane
 follows. AH2 closes the programme.
+
+AH1 outcome: the exercise record landed at
+f8a734f0 (PR #80). One repair rides with this
+closure, stated plainly: PR #79 (the launch
+README and media polish) landed at 70e8ab2b while
+AH1 was in flight, and AH1's tree, built on the
+earlier main, carried the older CHANGELOG region
+over PR #79's added entry in the 0.3.0 section
+when the squash applied. The parent-diff check
+caught it in the same pass (the merge showed
+CHANGELOG +4/-4 where the lane intended +4/-0).
+Nothing else from PR #79 was touched: its files
+stand intact, and the lost four lines are
+restored verbatim by this closure in their
+original position. The added discipline: when
+main has moved since a lane's tree was built, the
+parent diff is read against the new parent before
+the landing is reported, not after.
+
+Programme 17 is complete: AH1 landed at f8a734f0
+(PR #80), and this closure record is AH2. The P
+set held one lane and it is closed.
