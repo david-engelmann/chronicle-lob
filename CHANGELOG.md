@@ -5,6 +5,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md closes programme 15: the
+  dependency health record is landed at
+  fe819dba (PR #75).
 - docs/ROADMAP.md opens programme 15 with the
   dependency health pass: 117 locked versions
   checked against the registry, none yanked
