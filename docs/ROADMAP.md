@@ -1152,3 +1152,23 @@ Programme 13 is complete: AD1 landed at 1381b5c6
 (PR #71), and this closure record is AD2. The M set
 held one lane and it is closed. DC-5 remains open
 as David's call.
+
+## Programme 14: the N set (opened 2026-11-25)
+
+A dependency health pass, a surface no programme
+had covered as a set: the full Cargo.lock read
+from the remote tree (120 packages), every
+external locked version checked against the
+crates.io API for yanked status, and the lock
+scanned for duplicate versions of one crate.
+
+### Lane AE1: record the dependency health pass
+
+The outcome: 117 external versions checked, zero
+yanked, zero failed lookups. One duplicate stands:
+syn at 2.0.119 and 3.0.10, which is the dependency
+graph's own shape (different consumers requiring
+different majors of a compile-time library), not a
+defect this repo can or should act on; it is
+recorded as observed and explained. This section
+is the lane; AE2 closes the programme.

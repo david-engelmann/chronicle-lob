@@ -41,6 +41,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- docs/ROADMAP.md opens programme 14 with the
+  dependency health pass: 117 locked versions
+  checked against the registry, none yanked
+  (lane AE1).
 - docs/ROADMAP.md closes programme 13: the deep
   mutation record is landed at 1381b5c6 (PR #71),
   with a crates.io readme observation recorded
