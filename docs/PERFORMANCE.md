@@ -210,6 +210,39 @@ Per CHECK-DOC-1, hosted-runner readings for the updated suite are
 recorded only from a dispatched `.github/workflows/bench.yml` run on the
 standard `ubuntu-latest` runner class.
 
+## Programme 16 pass of 2026-11-25 (lane AG1)
+
+Measured on GitHub-hosted `ubuntu-latest` runners
+(bench dispatch run 45707524841 at commit
+43415ab2), criterion 0.8.2, slope point estimates.
+This is the first pass over the post-launch code:
+the 0.3.0 launch changed hot paths and reworked
+several benchmark measurement windows, so figures
+are recorded as measured under the current harness
+and are not a performance verdict against the
+programme 9 pass; where the windows changed, even
+the direction of a difference is not evidence.
+
+| Benchmark | Measured |
+| --- | --- |
+| add (one resting add, batch of 1,000) | 58.58 ns per operation |
+| cancel (one resting order, batch of 1,000) | 35.03 ns per operation |
+| best_bid_ask | 14.11 ns per call |
+| amend (one resting order, batch of 1,000) | 35.60 ns per amend |
+| mass cancel (800 orders of one participant) | 96.82 ns per cancelled order (77.45 us per call) |
+| match sweep (60 levels, 600 makers) | 24.04 us per sweep |
+| depth (100 levels) | 539.78 ns per call |
+| wal append (one Add frame) | 56.98 ns per frame (1,205.02 MiB/s) |
+| recovery (5,000 frames) | 560.92 us (612.07 MiB/s) |
+| recovery from reader (5,000 frames) | 570.08 us (602.23 MiB/s) |
+| snapshot round trip (about 903 KB encoded) | 2.20 ms (410.89 MiB/s) |
+
+The recovery-from-reader line is new in this pass:
+the launch added benchmark coverage for the
+streaming recovery entry point beside the slice
+form, and the two stand within two percent of each
+other here.
+
 ## Refreshing the baseline
 
 Dispatch the benchmarks workflow (.github/workflows/bench.yml)

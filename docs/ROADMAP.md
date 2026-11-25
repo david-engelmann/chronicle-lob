@@ -1137,3 +1137,32 @@ duplicate (syn) recorded as the graph's own shape.
 Programme 15 is complete: AF1 landed at fe819dba
 (PR #75), and this closure record is AF2. The N
 set held one lane and it is closed.
+
+## Programme 16: the O set (opened 2026-11-25)
+
+The post-launch audit. The 0.3.0 launch (PR #73)
+changed hot paths and several standing surfaces,
+so this programme re-verifies what it touched.
+First-pass checks, all against the current tree:
+the README demo still matches the wal_recovery
+example's pinned output byte for byte after the
+launch's example edits; the INVARIANTS spot pass
+resolves, the only absent names being the
+prohibited constructs the determinism rows forbid;
+and no v0.3.0 tag or GitHub Release exists yet,
+which belongs to the publication step and is
+recorded here as an observation only.
+
+### Lane AG1: record the post-launch performance pass
+
+Bench dispatch run 45707524841 at 43415ab2
+completed success. The figures stand in
+docs/PERFORMANCE.md as the programme 16 pass,
+recorded as measured under the post-launch
+harness with the comparability caveat stated
+there: the launch reworked several measurement
+windows, so no performance verdict is claimed
+against the programme 9 pass. The pass also
+records the launch's new recovery-from-reader
+benchmark beside the slice form. AG2 closes the
+programme.
