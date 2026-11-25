@@ -1166,3 +1166,18 @@ against the programme 9 pass. The pass also
 records the launch's new recovery-from-reader
 benchmark beside the slice form. AG2 closes the
 programme.
+
+AG1 outcome: the post-launch performance record
+landed at 171cf5c2 (PR #77) from bench dispatch
+45707524841, figures recorded as measured under
+the post-launch harness with the comparability
+caveat stated in PERFORMANCE.md.
+
+Programme 16 is complete: AG1 landed at 171cf5c2
+(PR #77), and this closure record is AG2. The O
+set's checks stand as recorded at the programme's
+head: the demo verified byte-accurate against the
+example, the INVARIANTS spot pass consistent, and
+the v0.3.0 tag and release absence noted for the
+launch ledger, where it belongs to the
+publication step.
