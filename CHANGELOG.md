@@ -41,6 +41,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- Repository settings tightened to squash-only
+  merges with the unused wiki disabled, verified
+  by API read-back (programme 12, lane AC1).
 - docs/ROADMAP.md closes programme 11: the
   merge-integrity sweep is recorded at 644f3d55
   (PR #67).
