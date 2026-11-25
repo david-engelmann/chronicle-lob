@@ -41,6 +41,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- GitHub Releases now exist for v0.1.0 and v0.2.0, with
+  notes drawn from their CHANGELOG sections
+  (programme 7, lane X2).
 - .github/dependabot.yml configures weekly version
   updates for the cargo and github-actions ecosystems,
   minor and patch grouped (programme 7, lane X1).

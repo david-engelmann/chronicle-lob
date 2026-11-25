@@ -813,6 +813,17 @@ GitHub Releases are created for v0.1.0 and v0.2.0 with
 notes drawn from their CHANGELOG sections, and the
 outcome is recorded here.
 
+Outcome: both releases were created on 2026-11-24
+through the API, each carrying its CHANGELOG section's
+opening and highlights with a link back to the full
+section. The releases page now shows 0.2.0 and 0.1.0
+against their tags. A side effect of lane X1 worth
+recording here: within minutes of the dependabot
+configuration landing, dependabot opened its first six
+pull requests, the grouped cargo minor-and-patch PR and
+five individual major bumps, each of which goes through
+the same hosted gate as any other change.
+
 ### Lane X3: issue and PR templates (G-3)
 
 A pull request template carries the review-readiness
