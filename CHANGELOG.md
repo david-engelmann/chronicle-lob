@@ -41,6 +41,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- The deep mutation exercise ran clean at main
+  ee9bf24f under fresh seed 70006, all eight
+  mutation tests passing at 100,000 cases per
+  surface (programme 13, lane AD1).
 - docs/ROADMAP.md closes programme 12: the
   merge-settings tightening is recorded at
   aa545dc8 (PR #69).
