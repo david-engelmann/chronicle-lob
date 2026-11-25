@@ -5,6 +5,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md closes programme 16: the
+  post-launch performance record is landed at
+  171cf5c2 (PR #77).
 - docs/PERFORMANCE.md records the post-launch
   performance pass (bench dispatch run
   45707524841 at 43415ab2), and docs/ROADMAP.md
