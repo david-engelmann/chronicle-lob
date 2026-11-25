@@ -41,6 +41,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- docs/ROADMAP.md closes programme 13: the deep
+  mutation record is landed at 1381b5c6 (PR #71),
+  with a crates.io readme observation recorded
+  for DC-5.
 - The deep mutation exercise ran clean at main
   ee9bf24f under fresh seed 70006, all eight
   mutation tests passing at 100,000 cases per

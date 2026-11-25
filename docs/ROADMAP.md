@@ -1132,3 +1132,23 @@ no conviction, so no repair lane follows; the
 harness's verdict at this head is clean under a
 fresh seed. This section is the record; AD2 closes
 the programme.
+
+AD1 outcome: the exercise record landed at
+1381b5c6 (PR #71) after the merge endpoint's
+degraded window passed; the main run at that head
+also exercised the programme 12 closure tree, which
+had landed without a run of its own.
+
+One observation stands for DC-5, proven from dates
+alone: the per-crate READMEs landed in V6 on
+2026-11-24, a week after 0.2.0 was published from
+403cbebd on 2026-11-17, so the published packages
+cannot contain them and the current release's
+crates.io pages render without a readme. Only a
+release fixes that, which keeps it inside DC-5,
+David's call, recorded here and not actioned.
+
+Programme 13 is complete: AD1 landed at 1381b5c6
+(PR #71), and this closure record is AD2. The M set
+held one lane and it is closed. DC-5 remains open
+as David's call.
