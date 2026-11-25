@@ -1113,3 +1113,22 @@ Programme 12 is complete: AC1 landed at aa545dc8
 held one item and it is closed; the link audit
 closed clean beside it. DC-5 remains open as
 David's call.
+
+## Programme 13: the M set (opened 2026-11-25)
+
+One lane of substance: the periodic deep mutation
+exercise, last run in W2 at 5e04b7e1. The seed
+rotation of T3 exists so that repeat runs explore
+fresh cases rather than re-proving the same ones.
+
+### Lane AD1: deep mutation exercise at current main
+
+Dispatch run 45650240040 at ee9bf24f completed
+success. Verified from the job log: the seed in
+force was 70006, CHRONICLE_MUTATION_CASES stood at
+100000, and all eight mutation tests passed, the
+four streaming pair tests among them. No panic and
+no conviction, so no repair lane follows; the
+harness's verdict at this head is clean under a
+fresh seed. This section is the record; AD2 closes
+the programme.
