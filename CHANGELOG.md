@@ -5,6 +5,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md opens programme 17 and records
+  the post-launch deep mutation exercise: clean
+  at bf85e526 under seed 70007, fifteen tests at
+  100,000 cases per surface (lane AH1).
 - docs/ROADMAP.md closes programme 16: the
   post-launch performance record is landed at
   171cf5c2 (PR #77).
@@ -79,10 +83,6 @@ helpers.
 - Animated `wal_recovery` demo in `README.md` (`docs/media/demo.gif`)
   and end-to-end checkpoint act in the `wal_recovery` example
   (programmes 4 and 5).
-- Public documentation index (`docs/README.md`), light and dark SVG
-  lockups and architecture and guarantee diagrams, a `1200x630`
-  social card, and a split-screen `docs/media/money-shot.gif` built
-  from pinned real outputs.
 - Mutation coverage of the streaming decoders across chunk sizes,
   `scan_reader`, and `recover_from_reader` against their slice forms
   (programme 4, lane U1).
