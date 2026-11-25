@@ -41,6 +41,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- A pull request template carrying the review-readiness
+  block and a bug-report issue template asking for the
+  seed and command stream a reproduction needs
+  (programme 7, lane X3).
 - GitHub Releases now exist for v0.1.0 and v0.2.0, with
   notes drawn from their CHANGELOG sections
   (programme 7, lane X2).
