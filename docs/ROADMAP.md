@@ -1181,3 +1181,25 @@ example, the INVARIANTS spot pass consistent, and
 the v0.3.0 tag and release absence noted for the
 launch ledger, where it belongs to the
 publication step.
+
+## Programme 17: the P set (opened 2026-11-25)
+
+The deep mutation exercise against the post-launch
+decoders. The launch hardened snapshot decoding
+and extended the mutation suites, so the surface
+the exercise stresses changed materially after
+the programme 13 run; this programme puts the new
+decoders under the deep volume.
+
+### Lane AH1: exercise and record the deep mutation pass
+
+Dispatch run 45713933476 at bf85e526 completed
+success. Verified from the job log: the seed in
+force was 70007, the volume 100,000 cases per
+surface, and the mutation suite now runs fifteen
+tests, the launch's CRC-recomputing structural
+suites among them (the valid-CRC snapshot and WAL
+forms beside the single-point, multi-point, and
+streaming pair forms). All fifteen passed. No
+panic and no conviction, so no repair lane
+follows. AH2 closes the programme.
