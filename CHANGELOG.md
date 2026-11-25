@@ -30,6 +30,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Changed
 
+- docs/ROADMAP.md records the programme 5 lane V4 audit
+  outcome: the INVARIANTS traceability matrix was
+  cross-checked against the tree (54 rows, 120 enforcement
+  names) and is sound, with no repairs required.
 - ARCHITECTURE.md section 14 describes the CI cache step and
   the weekly published-crate verification, and docs/ROADMAP.md
   opens programme 5 (programme 5, lane V1).
