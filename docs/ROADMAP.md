@@ -830,3 +830,11 @@ A pull request template carries the review-readiness
 block CONTRIBUTING.md requires, and a bug-report issue
 template asks for the seed and the command stream a
 reproduction needs.
+
+Outcome: .github/pull_request_template.md carries the
+summary and review-readiness block (spec reference,
+verified commands and head SHA, known deviations), and
+.github/ISSUE_TEMPLATE/bug_report.md asks what happened,
+what was expected, and for the seed, command stream or
+WAL file, crate and version, and full error output a
+deterministic reproduction needs, plus the environment.
