@@ -41,6 +41,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- docs/ROADMAP.md closes programme 7, with X1 at
+  f6e6505f, the X2 record at baacc715, X3 at e0e0af81,
+  and the first dependabot queue worked (four bumps
+  landed, two held with reasons stated).
 - A pull request template carrying the review-readiness
   block and a bug-report issue template asking for the
   seed and command stream a reproduction needs
