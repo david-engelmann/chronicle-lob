@@ -1099,3 +1099,29 @@ and `OrdersAt` L3 iterators join `chronicle-core`, Criterion teardown
 windows and `save_snapshot_with_buffer` are aligned, doctested crate
 READMEs and `.gitignore` are in place, and `.github/workflows/release.yml`
 builds precompiled five-target `chronicle-cli` archives with `SHA256SUMS`.
+
+## Programme 15: the N set (opened 2026-11-25)
+
+This seat's dependency health pass, renumbered on
+arrival: the launch programme landed as programme
+14 (PR #73) while the pass was in flight, and this
+seat's first record of it (PR #74) was closed
+unmerged against the moved main, correctly. The
+pass itself was re-verified against the new lock
+before recording: 120 packages, only the three
+workspace entries changed by the launch bump.
+
+### Lane AF1: record the dependency health pass
+
+The full Cargo.lock read from the remote tree,
+every external locked version checked against the
+crates.io API for yanked status, and the lock
+scanned for duplicate versions of one crate. The
+outcome: 117 external versions checked, zero
+yanked, zero failed lookups. One duplicate stands:
+syn at 2.0.119 and 3.0.10, which is the dependency
+graph's own shape (different consumers requiring
+different majors of a compile-time library), not a
+defect this repo can or should act on; it is
+recorded as observed and explained. This section
+is the lane; AF2 closes the programme.
