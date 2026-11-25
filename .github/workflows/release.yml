@@ -128,8 +128,26 @@ jobs:
         working-directory: release-assets
         run: |
           TAG="${GITHUB_REF_NAME}"
+          python3 - <<'PY'
+          import os, pathlib
+          ver = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          lines = pathlib.Path("../CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+          start = None
+          end = len(lines)
+          prefix = f"## [{ver}]"
+          for i, line in enumerate(lines):
+              if start is None:
+                  if line.startswith(prefix):
+                      start = i + 1
+              elif line.startswith("## "):
+                  end = i
+                  break
+          notes = "\n".join(lines[start:end]).strip() if start is not None else f"Release {ver}"
+          pathlib.Path("release-notes.md").write_text(notes + "\n", encoding="utf-8")
+          PY
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" chronicle-cli-*.tar.gz SHA256SUMS --clobber
+            gh release edit "${TAG}" --title "${TAG}" --notes-file release-notes.md --latest
           else
-            gh release create "${TAG}" chronicle-cli-*.tar.gz SHA256SUMS --title "${TAG}" --generate-notes
+            gh release create "${TAG}" chronicle-cli-*.tar.gz SHA256SUMS --title "${TAG}" --notes-file release-notes.md --latest
           fi

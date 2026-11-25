@@ -24,6 +24,7 @@
 <p align="center">
   <a href="https://github.com/david-engelmann/chronicle-lob/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/david-engelmann/chronicle-lob/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="CI on main"></a>
   <a href="https://crates.io/crates/chronicle-core"><img src="https://img.shields.io/crates/v/chronicle-core?color=c25e00&label=crates.io" alt="crates.io version"></a>
+  <a href="https://pypi.org/project/chronicle-lob/"><img src="https://img.shields.io/pypi/v/chronicle-lob?color=c25e00&label=pypi" alt="PyPI version"></a>
   <a href="https://docs.rs/chronicle-core"><img src="https://img.shields.io/docsrs/chronicle-core" alt="docs.rs"></a>
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue" alt="MIT or Apache-2.0 license"></a>
 </p>
@@ -75,16 +76,24 @@ Order books sit on the critical path of exchanges, matching simulators, risk gat
 
 ## Quickstart
 
-Install the operator CLI from crates.io or with `cargo-binstall`, or add `chronicle-core` and `chronicle-wal` to a Rust project.
+Install the operator CLI from crates.io, with `cargo-binstall`, or from PyPI, or add `chronicle-core` and `chronicle-wal` to a Rust project.
 
 ```sh
 cargo install chronicle-lob-cli
+# or install the CLI and Python SDK from PyPI
+pip install chronicle-lob
 ```
 
 ```toml
 [dependencies]
 chronicle-core = "0.3"
 chronicle-wal = "0.3"
+```
+
+```python
+import chronicle_lob
+
+summary = chronicle_lob.bench(ops=100_000, seed=42)
 ```
 
 ### Embedding the matching engine

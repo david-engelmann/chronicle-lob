@@ -1,0 +1,56 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "chronicle-lob"
+version = "0.3.0"
+description = "Deterministic limit order book CLI, CWAL binary encoder, and typed replay and benchmark SDK."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT OR Apache-2.0"
+authors = [{ name = "David Engelmann" }]
+keywords = [
+    "orderbook",
+    "matching-engine",
+    "trading",
+    "wal",
+    "deterministic",
+    "replay",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Rust",
+    "Topic :: Office/Business :: Financial",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/david-engelmann/chronicle-lob"
+Repository = "https://github.com/david-engelmann/chronicle-lob"
+Documentation = "https://docs.rs/chronicle-core"
+Changelog = "https://github.com/david-engelmann/chronicle-lob/blob/main/CHANGELOG.md"
+Issues = "https://github.com/david-engelmann/chronicle-lob/issues"
+
+[tool.maturin]
+manifest-path = "crates/chronicle-cli/Cargo.toml"
+bindings = "bin"
+python-source = "python"
+module-name = "chronicle_lob"
+strip = true
+include = ["LICENSE-MIT", "LICENSE-APACHE"]

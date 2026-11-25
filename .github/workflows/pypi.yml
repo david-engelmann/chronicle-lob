@@ -1,0 +1,142 @@
+name: pypi
+
+# Builds 5-platform native wheels (py3-none-*) and source distribution via
+# maturin, smoke-tests the installed wheel on Linux, macOS, and Windows, and
+# publishes to PyPI from GitHub Actions via OIDC Trusted Publishing (or
+# secrets.PYPI_API_TOKEN fallback).
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish built distributions to PyPI"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  wheels:
+    name: build wheel (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2_28"
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: "2_28"
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            manylinux: auto
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            manylinux: auto
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            manylinux: auto
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          rust-toolchain: "1.100.0"
+          args: --release --locked --out dist
+      - name: Upload wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheel-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  sdist:
+    name: build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          rust-toolchain: "1.100.0"
+          args: --out dist
+      - name: Upload sdist
+        uses: actions/upload-artifact@v7
+        with:
+          name: pypi-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  smoke-test:
+    name: smoke-test wheel (${{ matrix.os }})
+    needs: wheels
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: wheel-${{ matrix.target }}
+          path: dist
+      - name: Install wheel in clean venv and run SDK tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv || python -m venv .venv
+          if [ -x .venv/bin/python ]; then
+            PY=".venv/bin/python"
+            CLI=".venv/bin/chronicle-cli"
+          else
+            PY=".venv/Scripts/python.exe"
+            CLI=".venv/Scripts/chronicle-cli.exe"
+          fi
+          "$PY" -m pip install --no-index --find-links dist chronicle-lob
+          "$CLI" --version
+          "$PY" -c "import chronicle_lob; assert 'site-packages' in chronicle_lob.__file__.replace('\\\\', '/'), chronicle_lob.__file__"
+          "$PY" -m unittest discover -s python/tests -v
+
+  publish:
+    name: publish to PyPI
+    needs: [wheels, sdist, smoke-test]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: pypi-sdist
+          path: dist
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          attestations: ${{ secrets.PYPI_API_TOKEN == '' }}
