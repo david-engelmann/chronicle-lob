@@ -899,3 +899,38 @@ Warm medians are measured on the current v4 line and
 again on the v6 line the same way, the comparison and
 the keep-or-revert verdict are recorded, and PR #53 is
 dispositioned on that evidence.
+
+Y1 outcome: the migration landed at 5202b926
+(PR #61, on the fresh branch y1-criterion-0-8-fresh;
+PR #60, stacked on PR #54's history, computed phantom
+conflicts in these record files from its stale merge
+base and closed with a pointer once the identical tree
+was re-committed onto main). The seven bench targets
+that use black_box import it from std::hint, placed
+after the criterion import where this repo's rustfmt
+ordering puts it; PR #54 is closed as superseded. The
+merged Cargo.lock carries criterion 0.8.2 and clap
+4.6.9 together, proven by a package-block comparison
+of the two locks before landing.
+
+Y2 outcome: the re-baseline ran on real traffic, not
+synthetic dispatches. The v4 sample, from the night's
+runs before the bump: PR wall median 230s (n=3, spread
+176 to 237), main wall median 712s (n=4, spread 638 to
+733), bench compile legs 29 to 62s, and macOS test legs
+bimodal between about 50s (full restore hits) and
+about 220s. PR #53 then landed at 817b61df. The v6
+sample: PR walls 316s and 508s (n=2; the 508s run was
+the first on the new backend's empty cache), main wall
+740s (n=1), bench compile legs 27 to 43s, macOS test
+legs 42s, 52s, and 181s. Every v6 figure sits inside
+the v4 spread once the cache warmed, and the warm-hit
+signatures match v4's. Verdict: keep actions/cache v6,
+on a small sample with runner variance stated plainly;
+the fleet template's per-family expectations carry
+over unchanged.
+
+Programme 8 is complete: Y1 landed at 5202b926
+(PR #61) and Y2 at 817b61df (PR #53), with this
+closure record as Y3. Every H finding is closed.
+DC-5 remains open as David's call.

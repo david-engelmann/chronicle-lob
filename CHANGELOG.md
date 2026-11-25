@@ -41,6 +41,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- docs/ROADMAP.md closes programme 8: the criterion
+  0.8 migration landed at 5202b926 (PR #61) and the
+  cache v6 re-baseline at 817b61df (PR #53), verdict
+  keep v6 on the sampled evidence.
 - The benchmark targets move to criterion 0.8.2, with
   black_box imported from std::hint as criterion 0.8
   requires (programme 8, lane Y1; supersedes PR #54).
