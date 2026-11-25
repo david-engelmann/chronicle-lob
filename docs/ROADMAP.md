@@ -774,3 +774,48 @@ the W2 exercise ran clean at that head (run 45534405839)
 and its record landed at 9dca673c (PR #47), and W3 landed
 at fa5ffbee (PR #48). Every F finding is closed. DC-5
 remains open as David's call.
+
+## Programme 7: the G set (opened 2026-11-24)
+
+A fresh audit at 92e19f9b, the programme 6 closure,
+covered the maintenance and community surfaces no
+earlier set had examined end to end. Findings G-1 to
+G-3, lanes X1 to X3 in order, then the closure record.
+
+- G-1: no dependabot configuration exists. Security
+  updates are enabled and both alert surfaces are empty,
+  but routine version updates for the cargo dependencies
+  and the pinned actions have no automation.
+- G-2: no GitHub Release objects exist for v0.1.0 or
+  v0.2.0. The tags stand alone, though the CHANGELOG
+  holds a full section for each release.
+- G-3: no issue or pull request templates exist, though
+  CONTRIBUTING.md requires a review-readiness block in
+  every PR body and the engine's determinism makes a bug
+  exactly reproducible from a seed and a command stream.
+
+Checked and cleared in the same audit: secret scanning
+and push protection (both enabled), private
+vulnerability reporting (enabled at W3), and both alert
+surfaces (empty).
+
+### Lane X1: dependabot configuration (G-1)
+
+.github/dependabot.yml covers the cargo and
+github-actions ecosystems, weekly, with minor and patch
+updates grouped and major updates left individual for
+deliberate review. This section opens in the same
+commit.
+
+### Lane X2: releases for the two tags (G-2)
+
+GitHub Releases are created for v0.1.0 and v0.2.0 with
+notes drawn from their CHANGELOG sections, and the
+outcome is recorded here.
+
+### Lane X3: issue and PR templates (G-3)
+
+A pull request template carries the review-readiness
+block CONTRIBUTING.md requires, and a bug-report issue
+template asks for the seed and the command stream a
+reproduction needs.

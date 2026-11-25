@@ -41,6 +41,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- .github/dependabot.yml configures weekly version
+  updates for the cargo and github-actions ecosystems,
+  minor and patch grouped (programme 7, lane X1).
 - docs/ROADMAP.md closes programme 6, with W1 at
   5e04b7e1, the W2 record at 9dca673c, and W3 at fa5ffbee.
 - SECURITY.md states the supported versions, the private
