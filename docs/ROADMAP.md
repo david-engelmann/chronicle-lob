@@ -1125,3 +1125,15 @@ different majors of a compile-time library), not a
 defect this repo can or should act on; it is
 recorded as observed and explained. This section
 is the lane; AF2 closes the programme.
+
+AF1 outcome: the dependency health record landed
+at fe819dba (PR #75). The pass was re-verified
+against the post-launch lock before recording:
+120 packages, only the three workspace entries
+changed by the 0.3.0 bump, 117 external versions
+checked against the registry, none yanked, one
+duplicate (syn) recorded as the graph's own shape.
+
+Programme 15 is complete: AF1 landed at fe819dba
+(PR #75), and this closure record is AF2. The N
+set held one lane and it is closed.
