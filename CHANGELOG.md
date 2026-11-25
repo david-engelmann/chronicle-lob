@@ -41,6 +41,8 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- docs/ROADMAP.md closes programme 9: the criterion
+  0.8 performance pass landed at a84c491c (PR #63).
 - docs/PERFORMANCE.md records a full measurement pass
   under criterion 0.8.2 (programme 9, lane Z1; bench
   dispatch run 45601655307 at bcc3f1c5).
