@@ -32,7 +32,7 @@ Worked examples with pinned output live in the `examples` directories of the chr
 
 ## Where it fits
 
-chronicle-lob-cli is the operator surface of the chronicle-lob workspace. It drives books built with `chronicle-core` and persisted with `chronicle-wal`.
+chronicle-lob-cli is the operator surface of the [chronicle-lob](https://github.com/david-engelmann/chronicle-lob) workspace. It drives books built with [`chronicle-core`](https://crates.io/crates/chronicle-core) and persisted with [`chronicle-wal`](https://crates.io/crates/chronicle-wal). Full design and invariant references live in [docs/ARCHITECTURE.md](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ARCHITECTURE.md) and [docs/INVARIANTS.md](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md).
 
 ## License
 
