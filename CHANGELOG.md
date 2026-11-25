@@ -41,6 +41,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- The actions/checkout v7 and actions/upload-artifact
+  v7 pins from PRs #55 and #56 are restored; lane Y1's
+  stale-base tree had silently reverted them
+  (programme 10, lane AA1).
 - docs/ROADMAP.md closes programme 9: the criterion
   0.8 performance pass landed at a84c491c (PR #63).
 - docs/PERFORMANCE.md records a full measurement pass
