@@ -144,6 +144,43 @@ so per this file's rule the run stands as the new comparison
 point for later runs on this machine class, and its movements
 are readings, not verdicts about the code.
 
+## Programme 9 pass of 2026-11-25 (lane Z1)
+
+Measured on the standard GitHub-hosted ubuntu-latest
+runner from bench dispatch run 45601655307 at main
+bcc3f1c5, the first full pass under criterion 0.8.2
+(programme 8, lane Y1 moved the harness from 0.5.1).
+No engine or WAL code has changed since the U2 pass;
+the only change under measurement is the harness
+itself and its black_box source. Slope estimates,
+point estimates as recorded by the harness:
+
+- add (INV-LAT-1): 40.58 ns per operation, a stream
+  of 1,000 resting adds on an occupied book.
+- cancel (INV-LAT-1): 24.11 ns per operation over
+  the same stream shape.
+- best_bid_ask (INV-LAT-1): 11.73 ns per call.
+- amend (INV-LAT-6): 24.53 ns per amend.
+- mass cancel (INV-LAT-7): 73.69 ns per cancelled
+  order (58.95 microseconds per 800-order call).
+- sweep (INV-LAT-2): 27.33 microseconds for the
+  60-level, 600-maker sweep.
+- depth (INV-LAT-3): 915.02 ns for 100 levels.
+- wal_append (INV-LAT-4): 41.34 ns per frame,
+  1,661.25 MiB/s.
+- recovery (INV-LAT-4): 422.01 microseconds for
+  5,000 frames, 813.54 MiB/s.
+- snapshot round trip (INV-LAT-8): 1.22 ms,
+  741.78 MiB/s.
+
+Against the U2 pass the small operations read slower
+(add 34.80, cancel 18.64, best_bid_ask 5.77 ns then)
+and depth and the sweep read faster, the same
+two-way movement this file has shown between every
+pair of passes on shared runners. The pass exists so
+the record stands on the current harness, not as
+evidence of a performance change: none is claimed.
+
 ## Refreshing the baseline
 
 Dispatch the benchmarks workflow (.github/workflows/bench.yml)
