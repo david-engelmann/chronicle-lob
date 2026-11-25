@@ -1101,3 +1101,15 @@ it, and the manual delete after each landing is
 cheap insurance against that hazard. This record
 is the lane's other half; AC2 closes the
 programme.
+
+AC1 outcome: the settings change stands verified
+(squash the only merge method, wiki disabled,
+delete_branch_on_merge deliberately off), and its
+record landed at aa545dc8 (PR #69) under the
+tightened settings themselves.
+
+Programme 12 is complete: AC1 landed at aa545dc8
+(PR #69), and this closure record is AC2. The L set
+held one item and it is closed; the link audit
+closed clean beside it. DC-5 remains open as
+David's call.

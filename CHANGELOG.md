@@ -41,6 +41,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- docs/ROADMAP.md closes programme 12: the
+  merge-settings tightening is recorded at
+  aa545dc8 (PR #69).
 - Repository settings tightened to squash-only
   merges with the unused wiki disabled, verified
   by API read-back (programme 12, lane AC1).
