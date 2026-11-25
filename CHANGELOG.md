@@ -5,6 +5,11 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md opens programme 15 with the
+  dependency health pass: 117 locked versions
+  checked against the registry, none yanked
+  (lane AF1).
+
 ## [0.3.0] - 2026-11-25
 
 The third public release. Snapshot decoding and restore now enforce
