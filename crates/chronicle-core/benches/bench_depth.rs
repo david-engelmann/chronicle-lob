@@ -12,7 +12,8 @@ use chronicle_core::{
     Book, BookConfig, DepthLevel, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId,
     Side, StpPolicy,
 };
-use criterion::{BatchSize, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
+use std::hint::black_box;
 
 const fn bench_config() -> BookConfig {
     BookConfig {

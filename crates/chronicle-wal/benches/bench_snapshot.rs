@@ -14,7 +14,8 @@ use chronicle_core::{
     StpPolicy,
 };
 use chronicle_wal::{decode_snapshot, encode_snapshot};
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use std::hint::black_box;
 
 const fn bench_config() -> BookConfig {
     BookConfig {

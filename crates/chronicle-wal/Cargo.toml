@@ -14,7 +14,7 @@ chronicle-core = { version = "0.2.0", path = "../chronicle-core" }
 
 [dev-dependencies]
 proptest = "1"
-criterion = "0.5"
+criterion = "0.8"
 
 [[bench]]
 name = "bench_wal_append"
