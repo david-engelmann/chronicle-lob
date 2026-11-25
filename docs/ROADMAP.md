@@ -838,3 +838,64 @@ verified commands and head SHA, known deviations), and
 what was expected, and for the seed, command stream or
 WAL file, crate and version, and full error output a
 deterministic reproduction needs, plus the environment.
+
+Programme 7 is complete: X1 landed at f6e6505f
+(PR #50), the X2 releases were created on 2026-11-24
+and their record landed at baacc715 (PR #57), and X3
+landed at e0e0af81 (PR #58). The dependabot queue the
+X1 configuration produced was worked on its own diffs
+and CI: PR #51 (clap 4.6.7 to 4.6.9, grouped) landed at
+71aa101e, PR #52 (setup-rust-toolchain 1 to 2) at
+75340db6, PR #56 (checkout 4 to 7) at f04e24cd, and
+PR #55 (upload-artifact 4 to 7) at 6d9df39b. Two PRs
+stand open with their reasons stated on them: PR #53
+(actions/cache 4.3.0 to 6.1.0) is held until a
+deliberate cache re-baseline re-measures under the new
+backend, and PR #54 (criterion 0.5.1 to 0.8.2) is held
+because its own CI fails on the bench compile, which
+makes it a migration lane rather than a bump. Every G
+finding is closed. DC-5 remains open as David's call.
+
+## Programme 8: the H set (opened 2026-11-25)
+
+A fresh audit at 9fe071c3 worked the two held
+dependabot PRs down to their root causes and re-checked
+the surfaces the programme 7 merges could have touched.
+Findings H-1 and H-2, lanes Y1 and Y2 in order, then
+the closure record.
+
+- H-1: the criterion 0.8.2 bump (PR #54) fails for one
+  reason, proven from its bench-compile job log:
+  criterion 0.8 deprecates criterion::black_box in
+  favour of std::hint::black_box, every bench target
+  imports the deprecated path, and the workspace denies
+  warnings. Nothing else breaks; the bump's test legs
+  pass on the 0.8.2 lock.
+- H-2: the actions/cache v6 bump (PR #53) still owes
+  its deliberate re-baseline: warm medians measured the
+  programme 5 way on the current v4 line, then the same
+  measurement on v6, with the verdict recorded.
+
+Checked and cleared in the same audit: ARCHITECTURE
+section 14 names no action versions, so the programme 7
+merges left it accurate; the toolchain pin stands
+current (rustc 1.100.0); both alert surfaces remain
+empty; PERFORMANCE.md and INVARIANTS are untouched by
+the lock-only and workflow-only merges, correctly.
+
+### Lane Y1: the criterion 0.8 migration (H-1)
+
+The migration is built on PR #54's own head, so its
+verified Cargo.lock carries the 0.8.2 bump, and ports
+the seven bench targets that use black_box from
+criterion::black_box to std::hint::black_box.
+bench_amend uses no black_box and is untouched. PR #54
+closes as superseded when this lane lands. This
+section opens in the same commit.
+
+### Lane Y2: the cache v6 re-baseline (H-2)
+
+Warm medians are measured on the current v4 line and
+again on the v6 line the same way, the comparison and
+the keep-or-revert verdict are recorded, and PR #53 is
+dispositioned on that evidence.

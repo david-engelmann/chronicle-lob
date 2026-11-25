@@ -9,11 +9,12 @@
     reason = "criterion_group! generates the bench entry function without documentation"
 )]
 
+use std::hint::black_box;
 use std::io;
 
 use chronicle_core::{OrderId, OrderType, ParticipantId, Side};
 use chronicle_wal::{SyncPolicy, WalCommand, WalSink, WalWriter};
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 
 /// A sink that discards bytes and never allocates.
 struct NullSink;
