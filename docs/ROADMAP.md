@@ -705,3 +705,51 @@ the V5 record in this section. Every E finding is closed.
 DC-5 remains open as David's call, and the Unreleased
 changelog now holds the programme 3, 4, and 5 entries and
 the cache pilot's.
+
+## Programme 6: the F set (opened 2026-11-24)
+
+A fresh audit at f0506095, the programme 5 closure, found
+the record and the exercise schedule uneven in three
+places. Findings F-1 to F-3, lanes W1 to W3 in order,
+then the closure record.
+
+- F-1: ARCHITECTURE.md section 14 describes the cache
+  step for CI's ten compiling jobs, but its paragraph on
+  the four dispatch workflows never mentions the V2
+  rollout that added the same step to three of them.
+- F-2: the deep mutation exercise has never run at a
+  main head containing the streaming pair tests U1 added.
+  The last main-head deep run predates U1 (run
+  44196756726, 2026-11-17, at b37c9188); the 2026-11-23
+  deep dispatches ran on the V2 branch head.
+- F-3: the repo carries no SECURITY.md, and GitHub
+  private vulnerability reporting is disabled, so the
+  decoder's hardening story has no stated reporting
+  route beside it.
+
+Checked and cleared in the same audit: PERFORMANCE.md
+currency (no hot-path code has changed since the U2
+pass), the INVARIANTS matrix (sound at the V4 audit,
+nothing structural since), the verify-published weekly
+schedule (fired 2026-11-23, run 45233341399, success),
+the TODO and FIXME scan (clean), and the repo metadata
+(description and topics set).
+
+### Lane W1: section 14 currency (F-1)
+
+Section 14's dispatch-workflow paragraph names the V2
+cache rollout and the verify-published exception. This
+section opens in the same commit.
+
+### Lane W2: deep mutation at current main (F-2)
+
+A mutation-deep dispatch at the current main head under
+a fresh rotating seed, with the result recorded here. A
+repair lane follows only if the exercise convicts
+something.
+
+### Lane W3: the security policy (F-3)
+
+SECURITY.md states the supported versions and the
+reporting route, and private vulnerability reporting is
+enabled on the repo so the route exists.

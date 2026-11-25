@@ -41,6 +41,8 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Changed
 
+- ARCHITECTURE.md section 14 names the cache rollout to
+  the dispatch workflows (programme 6, lane W1).
 - docs/ROADMAP.md records the programme 5 lane V4 audit
   outcome: the INVARIANTS traceability matrix was
   cross-checked against the tree (54 rows, 120 enforcement
