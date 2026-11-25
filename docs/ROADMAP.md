@@ -1023,3 +1023,37 @@ Programme 10 is complete: AA1 landed at 502404d8
 (PR #65), and this closure record is AA2. The J set
 held one item, a correction, and it is closed.
 DC-5 remains open as David's call.
+
+## Programme 11: the K set (opened 2026-11-25)
+
+Programme 10's lesson set this audit's first pass:
+if one stale-base tree slipped a revert past
+tree-identity verification, the same check was owed
+to every other merge of the era. The parent diff of
+every squash merge from programme 7's X1 through
+programme 10's AA2 was read, file list against the
+lane's stated intent. Every merge carries exactly
+its intended files, with the one exception already
+repaired: Y1's seventeen files are its intended
+thirteen plus the four workflow files, the clobber
+surface and nothing more, so AA1's restore covers
+the incident's full extent. The merges of
+programmes 1 to 6 were built on branches cut from
+the then-current main, and their compare diffs were
+verified at landing per their records; the
+stale-base condition was unique to Y1's stack on
+PR #54's branch.
+
+Standing practice, recorded here so it outlives the
+seat: a landing is verified by three checks, not
+one. The merged tree must equal the green branch
+tree; the merge's parent diff must name only the
+files the lane intended to touch; and any content
+the landing claims to carry must be read back live
+on main after the merge.
+
+### Lane AB1: record the merge-integrity sweep
+
+This section is the lane: the sweep, its outcome,
+and the standing practice above. The changelog
+entry rides along. AB2 closes the programme.

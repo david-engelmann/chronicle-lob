@@ -41,6 +41,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- docs/ROADMAP.md opens programme 11 with the
+  merge-integrity sweep: every squash merge from
+  programme 7 onward carries exactly its intended
+  files, the repaired Y1 revert excepted (lane AB1).
 - docs/ROADMAP.md closes programme 10: the reverted
   action pins are restored at 502404d8 (PR #65).
 - The actions/checkout v7 and actions/upload-artifact
