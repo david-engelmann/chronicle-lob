@@ -5,6 +5,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/PERFORMANCE.md records the post-launch
+  performance pass (bench dispatch run
+  45707524841 at 43415ab2), and docs/ROADMAP.md
+  opens programme 16 (lane AG1).
 - docs/ROADMAP.md closes programme 15: the
   dependency health record is landed at
   fe819dba (PR #75).
