@@ -976,3 +976,36 @@ recorded in docs/PERFORMANCE.md from bench dispatch
 run 45601655307, and this closure record is Z2.
 The I set held one item and it is closed. DC-5
 remains open as David's call.
+
+## Programme 10: the J set (opened 2026-11-25)
+
+The fresh audit at 1ebc617a found one material item,
+and it is a correction to this record. PR #56
+(checkout v7) and PR #55 (upload-artifact v7) landed
+in programme 7 at f04e24cd and 6d9df39b with the
+correct patches, verified in their merge commits.
+Lane Y1 of programme 8 then silently reverted both:
+its tree was built on PR #54's branch, cut from main
+at 71aa101e before those merges, and the squash at
+5202b926 carried the older workflow files back over
+the newer ones. The seat's verification compared the
+merged tree to the branch tree, which proves a lane
+landed what it built, but never diffed the merge
+against its parent for files the lane did not intend
+to touch. That parent-diff check is now part of this
+repo's landing routine for any branch not cut from
+current main. The Y2 cache verdict is unaffected:
+both samples ran with checkout v4 in force, so the
+cache step was the only workflow difference between
+them. Everything else in the audit came back clean:
+no TODO or FIXME markers in the crate sources, crate
+metadata complete on all three packages, and the
+surfaces closed in programmes 3 to 9 still closed.
+
+### Lane AA1: restore the reverted action pins
+
+Restore exactly the #55 and #56 changes on current
+main: actions/checkout v7 in ci.yml, bench.yml,
+mutation-deep.yml, and publish.yml, and
+actions/upload-artifact v7 in bench.yml and
+publish.yml. Nothing else changes.
