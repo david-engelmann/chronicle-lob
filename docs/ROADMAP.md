@@ -595,6 +595,25 @@ Every row's enforcement cell is cross-checked against the
 tree, that the named tests and benchmarks exist and run, and
 repairs land in the same lane.
 
+Outcome (audited 2026-11-24 at 70b0cc01): the matrix is
+sound, and no repairs were required. All 54 rows (53
+invariants plus CHECK-DOC-1) were read against the tree, and
+120 enforcement names were extracted from the cells and
+judged one by one. Every named property test, unit test,
+integration test, fault oracle, benchmark, and file resolves
+to the tree as it stands; all 17 property tests and all 8
+benchmark targets in the tree are cited by a row. Five names
+needed a verdict by eye and each referent exists: the crossed
+book check inside debug_assert_invariants (annotated with its
+row id in the source), the level count column the bitmap
+checker recomputes from, the frame header length field in the
+decoder, the determinism gate's forbidden token list in
+ci.yml, and the best_bid_ask benchmark function inside its
+bench target. The one identifier with no row, INV-LAT-5, is
+the documented removal recorded at the head of the
+documentation checklist: it carries no enforcement, so under
+this file's own rule it is CHECK-DOC-1, not an invariant.
+
 ### Lane V3: selling-layer media (E-3)
 
 A scripted terminal demo of the worked example, with verify,
