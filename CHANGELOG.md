@@ -41,6 +41,8 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ### Added
 
+- docs/ROADMAP.md closes programme 10: the reverted
+  action pins are restored at 502404d8 (PR #65).
 - The actions/checkout v7 and actions/upload-artifact
   v7 pins from PRs #55 and #56 are restored; lane Y1's
   stale-base tree had silently reverted them

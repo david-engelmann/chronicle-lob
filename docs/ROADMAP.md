@@ -1009,3 +1009,17 @@ main: actions/checkout v7 in ci.yml, bench.yml,
 mutation-deep.yml, and publish.yml, and
 actions/upload-artifact v7 in bench.yml and
 publish.yml. Nothing else changes.
+
+AA1 outcome: the pins are restored at 502404d8
+(PR #65), verified live on main after the merge:
+checkout v7 in ci.yml, bench.yml, mutation-deep.yml,
+and publish.yml; upload-artifact v7 in bench.yml and
+publish.yml; the cache v6 SHA pin and the toolchain
+v2 pin untouched. The merge's parent diff was read
+file by file before the landing was called done, the
+check whose absence let the revert through in Y1.
+
+Programme 10 is complete: AA1 landed at 502404d8
+(PR #65), and this closure record is AA2. The J set
+held one item, a correction, and it is closed.
+DC-5 remains open as David's call.
