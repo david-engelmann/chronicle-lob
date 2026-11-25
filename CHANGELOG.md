@@ -28,6 +28,14 @@ follows Keep a Changelog, and the project uses semantic versioning.
   start a fresh log, and recover across the seam, with the
   output pinned for CI (programme 4, lane U5).
 
+### Added
+
+- The README carries an animated demo of the wal_recovery
+  worked example (docs/media/demo.gif, with a still poster
+  frame), produced under the Stageshow boundary as demo
+  material; every line shown is the example's real,
+  CI-pinned output (programme 5, lane V3).
+
 ### Changed
 
 - docs/ROADMAP.md records the programme 5 lane V4 audit
