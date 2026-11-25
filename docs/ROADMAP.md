@@ -621,6 +621,19 @@ replay, and checkpoint run against the session files,
 recorded as a high-quality GIF and placed in the README.
 Demo material only, under the Stageshow boundary.
 
+Outcome: the demo as landed is the wal_recovery example's
+own story, recovery and then checkpoint, told in one
+terminal session. The verify, replay, and checkpoint beats
+of the original sketch are the CLI's surface, and the
+example already performs the checkpoint composition itself,
+so the demo follows the example and stays inside one real
+program's output. Every line shown is that output, pinned
+byte for byte in wal_recovery.expected.txt and diffed in CI
+on every change. The animation (docs/media/demo.gif, 880 by
+452, about thirteen seconds, with demo-poster.png as the
+still frame) types the command, plays the two acts, and
+holds on the second match line.
+
 ### Lane V5: cache medians record (E-5)
 
 The warm PR and main runs that normal traffic accrues are

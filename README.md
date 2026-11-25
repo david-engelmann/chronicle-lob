@@ -15,6 +15,18 @@ deterministic. The same commands in the same order always produce the
 same events, byte for byte, on any machine. That makes it usable
 anywhere matching logic has to be tested, replayed, or audited later.
 
+![The wal_recovery example recovering a book from its write-ahead log and checkpointing it, with the recovered book matching the live book](docs/media/demo.gif)
+
+The demo is the `wal_recovery` worked example from
+`chronicle-wal`. It writes a session to the write-ahead log with
+a snapshot taken partway through, recovers the book from the
+snapshot and the log tail, and checks the recovered book against
+the live one. It then checkpoints the session, continues trading
+on a fresh log, and recovers across the checkpoint seam. Every
+line shown is the example's real output, pinned in
+`crates/chronicle-wal/examples/wal_recovery.expected.txt` and
+diffed in CI on every change.
+
 ## What it does
 
 - Keeps buy and sell orders on a fixed price grid and matches them by
