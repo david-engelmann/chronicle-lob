@@ -759,3 +759,12 @@ no conviction, so no repair lane follows.
 SECURITY.md states the supported versions and the
 reporting route, and private vulnerability reporting is
 enabled on the repo so the route exists.
+
+Outcome: private vulnerability reporting was enabled on
+the repo first (the API confirms it enabled), and
+SECURITY.md then names that route. The policy states
+that fixes apply to the newest release and to main, and
+it scopes the decoder surface honestly: a panic or an
+accepted malformed record in either decoder counts as a
+security issue, and a pure performance problem does not,
+unless untrusted input can use it to halt a host.

@@ -39,6 +39,13 @@ follows Keep a Changelog, and the project uses semantic versioning.
   material; every line shown is the example's real,
   CI-pinned output (programme 5, lane V3).
 
+### Added
+
+- SECURITY.md states the supported versions, the private
+  reporting route (GitHub private vulnerability reporting,
+  now enabled on the repo), and the decoder scope
+  (programme 6, lane W3).
+
 ### Changed
 
 - The deep mutation exercise ran at the current main head
