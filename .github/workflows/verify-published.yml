@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install pinned toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Create the scratch project
         run: |
           cargo new scratch-consumer
@@ -106,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install pinned toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Install chronicle-lob-cli from crates.io
         run: cargo install chronicle-lob-cli --version 0.2.0 --root "$RUNNER_TEMP/chronicle-install"
       - name: Run the installed binary
