@@ -77,7 +77,7 @@ assert_eq!(recovery.book.best_bid(), Some((100, 10)));
 # Ok::<(), chronicle_wal::WalError>(())
 ```
 
-The log and snapshot formats are specified in `docs/ARCHITECTURE.md` sections 9 and 10 in the repository.
+The log and snapshot formats are specified in [docs/ARCHITECTURE.md](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ARCHITECTURE.md) sections 9 and 10, the durability invariants live in [docs/INVARIANTS.md](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md), and the API reference is hosted on [docs.rs/chronicle-wal](https://docs.rs/chronicle-wal).
 
 ## Where it fits
 

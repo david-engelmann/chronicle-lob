@@ -1,79 +1,95 @@
-# chronicle-lob
+<p align="center">
+  <a href="https://github.com/david-engelmann/chronicle-lob">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/media/chronicle-lockup-dark.svg">
+      <img src="docs/media/chronicle-lockup-light.svg" alt="chronicle-lob" height="56">
+    </picture>
+  </a>
+</p>
 
-A limit order book and matching engine written in Rust.
+<h3 align="center">Deterministic limit order book and matching engine in Rust, with zero hot-path allocation.</h3>
 
-An order book is the data structure at the center of a market. It
-holds the buy orders and sell orders that are waiting to trade, and
-when a new order arrives it works out which waiting orders it trades
-with. This crate does that work for one market. You feed it commands
-(add an order, cancel an order, change an order) and it hands back a
-stream of events that says exactly what happened, in order.
+<p align="center">
+  <code>chronicle-lob</code> maintains a single-market price-time limit order book on a bounded integer tick grid, matches incoming orders against resting liquidity, persists every accepted command to a checksummed write-ahead log, and rebuilds exact book state across crashes and checkpoints in bounded memory.
+</p>
 
-The engine is built to be predictable. It is single threaded, it does
-no allocation after startup in its core paths, and it is
-deterministic. The same commands in the same order always produce the
-same events, byte for byte, on any machine. That makes it usable
-anywhere matching logic has to be tested, replayed, or audited later.
+<p align="center">
+  <a href="docs/README.md"><b>Docs</b></a> ·
+  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="docs/INVARIANTS.md">Invariants</a> ·
+  <a href="docs/PERFORMANCE.md">Performance</a> ·
+  <a href="https://github.com/david-engelmann/chronicle-lob/releases">Releases</a>
+</p>
 
-![The wal_recovery example recovering a book from its write-ahead log and checkpointing it, with the recovered book matching the live book](docs/media/demo.gif)
+<p align="center">
+  <a href="https://github.com/david-engelmann/chronicle-lob/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/david-engelmann/chronicle-lob/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="CI on main"></a>
+  <a href="https://crates.io/crates/chronicle-core"><img src="https://img.shields.io/crates/v/chronicle-core?color=c25e00&label=crates.io" alt="crates.io version"></a>
+  <a href="https://docs.rs/chronicle-core"><img src="https://img.shields.io/docsrs/chronicle-core" alt="docs.rs"></a>
+  <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue" alt="MIT or Apache-2.0 license"></a>
+</p>
 
-The demo is the `wal_recovery` worked example from
-`chronicle-wal`. It writes a session to the write-ahead log with
-a snapshot taken partway through, recovers the book from the
-snapshot and the log tail, and checks the recovered book against
-the live one. It then checkpoints the session, continues trading
-on a fresh log, and recovers across the checkpoint seam. Every
-line shown is the example's real output, pinned in
-`crates/chronicle-wal/examples/wal_recovery.expected.txt` and
-diffed in CI on every change.
+<p align="center">
+  <img src="docs/media/money-shot.gif"
+       alt="A two-part view with live order book depth and durability telemetry above and real terminal runs below, executing book_session, wal_recovery across a snapshot and checkpoint seam, and the 1,000,000-operation zero-allocation proof"
+       width="900">
+</p>
 
-## What it does
+<p align="center"><sub>Every terminal line above comes from real runs of the <code>book_session</code> and <code>wal_recovery</code> examples and the <code>alloc_proof</code> test target, pinned and checked in continuous integration on Linux, macOS, and Windows.</sub></p>
 
-- Keeps buy and sell orders on a fixed price grid and matches them by
-  price first and arrival time second, at the resting order's price.
-- Supports four order types. A limit order rests until it fills or is
-  cancelled. An immediate-or-cancel order fills what it can now and
-  expires the rest. A fill-or-kill order fills in full or not at all.
-  A post-only order rests only when its price would not trade at once.
-- Amends resting orders. Reducing quantity keeps the order's place in
-  line. Increasing quantity or changing price moves it to the back of
-  its price level.
-- Cancels one order, or every order belonging to one participant in a
-  single command.
-- Stops an order from trading with the same participant's own resting
-  orders, under a self-trade prevention policy chosen per order.
-- Reports every outcome as a typed event (accepted, trade, filled,
-  cancelled, expired, amended) carrying a sequence number, and answers
-  zero-allocation order, spread, level, and depth queries for display
-  or downstream use.
-- Rejects bad commands with typed errors and no side effects. A
-  rejected command changes nothing, writes no events, and does not
-  advance the sequence number.
+## Why chronicle-lob
 
-The core crate has no dependencies outside the Rust standard library.
+Order books sit on the critical path of exchanges, matching simulators, risk gates, and historical replay pipelines. General-purpose collection types allocate on the heap during bursts, scatter resting orders across cache lines, and drift when hash iteration or wall-clock calls enter matching logic. `chronicle-lob` fixes memory layout up front and treats determinism as a hard invariant rather than an accident.
 
-## Current state
+- **Strict price-time priority.** Buy and sell orders rest on a bounded integer tick grid and match by best price first and arrival order second, always executing at the resting maker price.
+- **Zero steady-state heap allocation.** Orders live in a preallocated struct-of-arrays arena indexed by 32-bit slot indices, active price levels sit under a 64-ary hierarchical bitmap (`O(bitmap depth)` best-price and sparse level walks), and events write into a caller-owned `EventBuffer`.
+- **Atomic preflight before mutation.** Every command checks grid bounds, capacity, fill-or-kill liquidity, post-only crossing, and event buffer room before touching book state. A rejected command mutates nothing, emits zero events, and leaves sequence numbers untouched.
+- **Four order types, priority-aware amend, mass cancel, and self-trade prevention.** Supports `Limit`, `Ioc`, `Fok`, and `PostOnly` orders, quantity reductions that keep FIFO priority, price or size increases that re-queue at tail, single-call participant mass cancel, and per-order self-trade prevention policies.
+- **Crash-safe persistence in bounded memory.** `chronicle-wal` frames commands with Castagnoli CRC32C checksums, writes atomic snapshots and verified checkpoints, rejects crafted corrupt snapshots unconditionally in both debug and release builds, and streams verification, replay, and crash recovery in roughly 8 KiB of buffer space.
+- **Pure standard-library core.** `chronicle-core` has zero external dependencies, forbids `unsafe` code, reads no clock, and draws no ambient randomness.
 
-The project was built in four milestones, and all four have landed.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/guarantees-dark.svg">
+    <img src="docs/media/guarantees-light.svg"
+         alt="Four verified chronicle-lob guarantees covering zero steady-state allocations across one million operations, zero external crates in chronicle-core, 8 KiB bounded streaming recovery, and dual-seed 10,000-case differential property sweeps"
+         width="860">
+  </picture>
+</p>
 
-- Milestone 1 has landed. The core book, the price grid, limit order
-  matching, cancels, and best-price and depth queries.
-- Milestone 2 has landed. All four order types, amend, mass cancel
-  by participant, and self-trade prevention.
-- Milestone 3 has landed. The write-ahead log and snapshots, so a
-  book can be written to disk as it runs and rebuilt exactly after
-  a crash.
-- Milestone 4 has landed. A command line tool for replaying and
-  benchmarking a book, plus the final performance proof work.
+## How it works
 
-All three crates are at version 0.3.0. Write-ahead log verification,
-replay, and recovery stream in bounded memory (~8 KiB), so logs much
-larger than RAM can be verified, replayed, and checkpointed across
-successive cycles. Continuous integration runs the test and examples
-suites on Linux, macOS, and Windows, so every supported platform is
-exercised on every change.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/how-it-works-dark.svg">
+    <img src="docs/media/how-it-works-light.svg"
+         alt="Inbound add, amend, cancel, and query commands flow into chronicle-core with preflight validation, 64-ary bitmaps, a struct-of-arrays arena, open-addressed ID lookup, checked u128 arithmetic, and caller EventBuffer, backed by chronicle-wal CRC32C frames and snapshots, producing deterministic execution events, exact crash recovery, and CLI operations"
+         width="860">
+  </picture>
+</p>
 
-## A short example
+| Crate | Kind | External runtime deps | Role |
+| --- | --- | --- | --- |
+| [`chronicle-core`](crates/chronicle-core/README.md) | library | none (`std` only) | Deterministic matching engine, 64-ary hierarchical bitmaps, SoA order arena, zero-allocation L2 and L3 book queries, and independent `ReferenceBook` differential oracle. |
+| [`chronicle-wal`](crates/chronicle-wal/README.md) | library | none (`std` only) | Slicing-by-8 CRC32C write-ahead log, atomic snapshot codec with unconditional invariant checks, multi-cycle checkpointing, and bounded-memory streaming recovery. |
+| [`chronicle-lob-cli`](crates/chronicle-cli/README.md) | binary (`chronicle-cli`) | `clap`, `serde`, `serde_json` | Operator CLI for `verify`, `replay`, `snapshot`, `checkpoint`, and seeded synthetic `bench` runs. |
+
+## Quickstart
+
+Install the operator CLI from crates.io or with `cargo-binstall`, or add `chronicle-core` and `chronicle-wal` to a Rust project.
+
+```sh
+cargo install chronicle-lob-cli
+```
+
+```toml
+[dependencies]
+chronicle-core = "0.3"
+chronicle-wal = "0.3"
+```
+
+### Embedding the matching engine
+
+Prices are plain integers in the smallest quote unit, and `BookConfig` defines the valid tick grid and arena capacity. Commands append typed `ExecutionEvent` records into a caller-owned buffer.
 
 ```rust
 use chronicle_core::{
@@ -117,117 +133,83 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut events,
     )?;
 
-    // storage now holds Accepted, Trade, Filled, Filled events.
+    // storage now holds Accepted, Accepted, Trade, Filled, Filled events.
     assert_eq!(book.live_order_count(), 0);
     Ok(())
 }
 ```
 
-Prices are plain integers in the smallest quote unit, and the price
-grid in `BookConfig` says which prices are valid. Commands write
-their events into a caller-owned buffer, so the caller decides how
-much output room each command gets and is told up front when a buffer
-is too small.
+### Persistence, checkpointing, and CLI inspection
 
-## The command line tool
+The `wal_recovery` worked example writes a five-command trading session to a write-ahead log, saves a snapshot partway through, recovers the book from the snapshot and log tail, checkpoints the session onto a fresh log, and verifies recovery across the checkpoint seam.
 
-The `chronicle-cli` binary works with the log and snapshot files
-the engine writes. It has five subcommands.
-
-- `replay` applies a write-ahead log to a book and prints every
-  event the commands produce, in order.
-- `verify` checks a log and snapshot pair and reports whether the
-  sequence numbers and checksums are healthy.
-- `snapshot` replays a log on top of an optional base snapshot and
-  writes an atomic snapshot of the rebuilt book.
-- `checkpoint` replays a log on top of an optional base snapshot,
-  writes a new snapshot, verifies it by loading it back, and only then
-  archives the log under the sequence the snapshot covers, so a
-  long-running log stays bounded across repeated checkpoints.
-- `bench` runs a seeded synthetic load against a fresh book and
-  prints a summary, as plain text or as JSON with `--json`.
-
-A book is rebuilt either from a snapshot, which carries its own
-configuration, or from configuration flags that name the arena
-size and the price grid. Every subcommand accepts `--seed` and
-honours the `SIM_SEED` environment variable.
+<p align="center">
+  <img src="docs/media/demo.gif"
+       alt="The wal_recovery example recovering a book from its write-ahead log and checkpointing it, with the recovered book matching the live book"
+       width="820">
+</p>
 
 ```sh
-chronicle-cli verify --wal book.wal --snapshot book.snapshot
-chronicle-cli bench --ops 100000 --seed 42 --json
+cargo run --locked -p chronicle-wal --example wal_recovery
 ```
 
-### A worked example
-
-The chronicle-wal example runs a five-command session in a clean
-temporary directory, takes a snapshot halfway through, recovers from
-the pair, and exercises a full checkpoint cycle.
-
-```sh
-cargo run -p chronicle-wal --example wal_recovery
-```
-
-Given a `session.wal` and `session.snapshot` pair from that five-command
-session, `chronicle-cli` inspects and replays the tail with output
-pinned by the test suite.
+`chronicle-cli` inspects, replays, snapshots, checkpoints, and benchmarks session files in bounded memory. Every subcommand accepts `--seed` and honours `SIM_SEED`.
 
 ```sh
 chronicle-cli verify --wal session.wal --snapshot session.snapshot
 ```
 
-```
+```text
 snapshot: ok last_included_seq=3 live_orders=2
 wal: ok frames=5 discarded=0 last_seq=5
 verdict: ok
 ```
 
-Replay starts from the snapshot, so it prints the seed banner and
-only the two events the snapshot does not already cover.
-
 ```sh
 chronicle-cli replay --wal session.wal --snapshot session.snapshot
 ```
 
-```
+```text
 seed=0
 4 amended order=1 price=99 qty=6
 5 cancelled order=2 reason=requested
 ```
 
-## Building and testing
-
 ```sh
-cargo test --workspace --locked
-cargo clippy --workspace --all-targets --locked
+chronicle-cli bench --ops 100000 --seed 42 --json
 ```
 
-The test suite includes property tests that run the engine against a
-simple independent reference implementation and compare the full
-event streams. Set `PROPTEST_CASES` to control how many cases they
-run. Continuous integration runs 1,000 cases per pull request and
-10,000 on the main branch. The main branch sweeps rotate their seed
-with each run, so successive runs explore new cases, and the seed in
-force is printed in the run log.
+## Verification and performance
 
-The suite also includes a proof that the engine performs no heap
-allocations across one million mixed operations, and criterion
-benchmarks for matching, depth queries, log appends, and recovery.
+Run the full workspace verification gate locally.
 
-## Repository layout
+```sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
+cargo bench --workspace --locked -- --test
+```
 
-- `crates/chronicle-core` is the engine itself.
-- `crates/chronicle-wal` is the write-ahead log and snapshot code.
-- `crates/chronicle-cli` is the command line tool.
-- `docs/ARCHITECTURE.md` is the full design, written for engineers who
-  want the data structures, the formats, and the reasoning.
-- `docs/INVARIANTS.md` lists every correctness rule the engine
-  promises, and names the exact test that enforces each one.
-- `docs/ROADMAP.md` records the post-M4 programmes and their
-  lanes, from publication readiness through the current work.
-- `DECISIONS.md` records the locked project decisions.
-- `CONTRIBUTING.md` explains how the project is built and tested.
+Property tests run the production `Book` lockstep against an independent `BTreeMap` and `VecDeque` `ReferenceBook` and compare full event streams and book snapshots after every command. Pull requests run 1,000 cases per property and `main` runs two independent 10,000-case sweeps on rotating seeds. Dedicated counting-allocator proof targets verify zero steady-state heap allocations across one million mixed commands, and CRC-recomputing structural mutation suites exercise snapshot and WAL decoders against adversarial byte tampering.
+
+Per [CHECK-DOC-1](docs/INVARIANTS.md), measured Criterion baselines live exclusively in [docs/PERFORMANCE.md](docs/PERFORMANCE.md) alongside the exact benchmark name, book occupancy, commit hash, and runner class that produced them.
+
+## Documentation
+
+| If you want to... | Read |
+| --- | --- |
+| Navigate every document in the repository | [Documentation index](docs/README.md) |
+| Understand the arena, bitmaps, WAL framing, and snapshot byte layout | [Architecture](docs/ARCHITECTURE.md) · [Decisions](DECISIONS.md) |
+| Audit every correctness, durability, and allocation invariant | [Invariants and traceability matrix](docs/INVARIANTS.md) |
+| Inspect recorded Criterion latency and throughput baselines | [Performance baseline](docs/PERFORMANCE.md) |
+| Check crate APIs and operator subcommands | [chronicle-core](crates/chronicle-core/README.md) · [chronicle-wal](crates/chronicle-wal/README.md) · [chronicle-lob-cli](crates/chronicle-cli/README.md) |
+| Review security scope, threat model, and release history | [Security policy](SECURITY.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md) |
+
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers toolchain setup, determinism rules, contract-first testing, and the pull request gate.
 
 ## License
 
-Licensed under either of MIT or Apache-2.0 at your option, see
-`LICENSE-MIT` and `LICENSE-APACHE`.
+Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE) at your option.

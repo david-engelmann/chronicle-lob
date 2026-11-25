@@ -53,7 +53,7 @@ assert_eq!(book.live_order_count(), 0);
 # Ok::<(), chronicle_core::BookError>(())
 ```
 
-The full design contract lives in `docs/ARCHITECTURE.md` in the repository, and the invariants the engine maintains are listed in `docs/INVARIANTS.md`.
+The full design contract lives in [docs/ARCHITECTURE.md](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ARCHITECTURE.md), the invariants the engine maintains are listed in [docs/INVARIANTS.md](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md), and the API reference is hosted on [docs.rs/chronicle-core](https://docs.rs/chronicle-core).
 
 ## Where it fits
 
