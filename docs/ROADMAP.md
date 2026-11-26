@@ -1249,3 +1249,17 @@ the three crates, and PyPI carries no package
 under the chronicle-lob names yet, though PR #82
 landed the Python SDK and the OIDC release
 automation. AI2 closes the programme.
+
+AI1 outcome: the release-state record landed at
+6c4b5a2a (PR #84), its parent exactly the base it
+was built on and its diff additions only. The
+verified state stands as recorded there: GitHub
+Release v0.3.0 published with five binary
+tarballs and SHA256SUMS, tag at 0b8c1cca, release
+run green at that head, and the crates.io and
+PyPI publications outstanding as launch-ledger
+observations.
+
+Programme 18 is complete: AI1 landed at 6c4b5a2a
+(PR #84), and this closure record is AI2. The Q
+set held one lane and it is closed.
