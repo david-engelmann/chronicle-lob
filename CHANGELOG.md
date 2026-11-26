@@ -5,6 +5,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md records the verify-published
+  proof at 0.3.0: dispatch run 45776133389
+  completed success on both jobs (lane AJ2).
 - docs/ROADMAP.md opens programme 19 and records
   the shipped-artifact verification: the v0.3.0
   binary runs to contract from the release

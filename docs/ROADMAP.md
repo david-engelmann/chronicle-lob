@@ -1292,3 +1292,19 @@ programme 18 are discharged by the launch drive
 itself. AJ2 moves the verify-published pins to
 0.3.0 now that the registry carries it; AJ3
 closes the programme.
+
+### Lane AJ2: prove the published 0.3.0 crates
+
+The verify-published pins already read 0.3.0: the
+launch drive re-pinned the workflow with the
+release, so this lane is the proof rather than
+the pin move. Dispatch run 45776133389 at
+892a4c0f completed success on both jobs: a fresh
+scratch project adds chronicle-core and
+chronicle-wal at 0.3.0 from the real registry,
+builds, and runs the round trip, and cargo
+install of chronicle-lob-cli at 0.3.0 succeeds
+with the installed binary's bench running. The
+crates channel's stranger-consumption proof
+stands at 0.3.0 beside AJ1's binary-channel
+proof. AJ3 closes the programme.
