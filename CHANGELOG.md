@@ -5,6 +5,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md closes programme 20: the PyPI
+  stranger proof is landed at fcf8d8b9 (PR #89),
+  and all three publication channels now carry
+  a consumption proof.
 - docs/ROADMAP.md opens programme 20 and records
   the PyPI channel's stranger proof: the SDK
   installs clean, its bench agrees with the
