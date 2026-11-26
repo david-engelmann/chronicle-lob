@@ -5,6 +5,11 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md opens programme 22 and records
+  the failure-side proofs: a flipped byte, a
+  torn tail, and trailing garbage are convicted
+  or discarded identically by the Rust binary
+  and the Python SDK (lane AM1).
 - docs/ROADMAP.md closes programme 21: the
   cross-channel interop proof is landed at
   b33fb8de (PR #92).
