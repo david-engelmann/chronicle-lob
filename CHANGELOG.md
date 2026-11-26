@@ -5,6 +5,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md closes programme 19: the
+  shipped-artifact and published-crate proofs
+  are landed at 892a4c0f (PR #86) and 0e3c1904
+  (PR #87).
 - docs/ROADMAP.md records the verify-published
   proof at 0.3.0: dispatch run 45776133389
   completed success on both jobs (lane AJ2).
