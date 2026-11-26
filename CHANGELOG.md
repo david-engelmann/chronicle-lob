@@ -5,6 +5,11 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md opens programme 18 and records
+  the verified v0.3.0 release state: GitHub
+  Release published with five binary tarballs,
+  tag at 0b8c1cca, registry publications still
+  outstanding (lane AI1).
 - docs/ROADMAP.md closes programme 17: the
   post-launch deep mutation record is landed
   at f8a734f0 (PR #80), with PR #79's changelog

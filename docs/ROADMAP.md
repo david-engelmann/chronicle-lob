@@ -1225,3 +1225,27 @@ the landing is reported, not after.
 Programme 17 is complete: AH1 landed at f8a734f0
 (PR #80), and this closure record is AH2. The P
 set held one lane and it is closed.
+
+## Programme 18: the Q set (opened 2026-11-26)
+
+The release-state audit: the launch's release
+apparatus verified from the outside, read-only,
+while the launch drive works it.
+
+### Lane AI1: record the v0.3.0 release state
+
+Verified firsthand on 2026-11-26: the GitHub
+Release v0.3.0 is published (not a draft, not a
+prerelease) and carries five binary tarballs
+(macOS and Linux on arm64 and x86_64, Windows on
+x86_64) plus SHA256SUMS. The annotated tag v0.3.0
+points at 0b8c1cca. The release workflow's run at
+that head completed success, after an earlier
+failure at 2b31951c that PR #83 addressed. Two
+registry gaps stand as observations for the
+launch ledger, not actioned from this seat:
+crates.io still lists only 0.1.0 and 0.2.0 for
+the three crates, and PyPI carries no package
+under the chronicle-lob names yet, though PR #82
+landed the Python SDK and the OIDC release
+automation. AI2 closes the programme.
