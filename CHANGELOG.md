@@ -5,6 +5,11 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md opens programme 19 and records
+  the shipped-artifact verification: the v0.3.0
+  binary runs to contract from the release
+  tarball, and publication stands complete on
+  crates.io, docs.rs, and PyPI (lane AJ1).
 - docs/ROADMAP.md closes programme 18: the
   v0.3.0 release-state record is landed at
   6c4b5a2a (PR #84).

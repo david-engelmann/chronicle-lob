@@ -1263,3 +1263,32 @@ observations.
 Programme 18 is complete: AI1 landed at 6c4b5a2a
 (PR #84), and this closure record is AI2. The Q
 set held one lane and it is closed.
+
+## Programme 19: the R set (opened 2026-11-26)
+
+The shipped-artifact verification: the binary
+channel the launch opened gets the stranger
+consumption check the crates channel has always
+had, and the publication state is re-verified
+across every channel.
+
+### Lane AJ1: verify the shipped binary and the publication state
+
+The v0.3.0 x86_64 Linux tarball was downloaded
+from the GitHub Release at exactly its listed
+size (512,615 bytes) and the shipped chronicle-cli
+binary was run in a clean sandbox: bench at
+10,000 operations under seed 1 printed the eight
+contract lines in order (applied 7216, rejected
+2784, trades 3818, live_orders 41, best_bid 302,
+best_ask 322) and the matching JSON object, exit
+0 in both modes. The publication state is now
+complete on every channel, verified firsthand:
+crates.io lists 0.3.0 for all three crates,
+docs.rs serves both library crates' 0.3.0 pages,
+and PyPI carries chronicle-lob at 0.3.0. The
+registry observations left outstanding in
+programme 18 are discharged by the launch drive
+itself. AJ2 moves the verify-published pins to
+0.3.0 now that the registry carries it; AJ3
+closes the programme.
