@@ -1,6 +1,6 @@
 name: verify-published
 
-# Proves the published 0.2.0 crates work the way a stranger
+# Proves the published 0.3.0 crates work the way a stranger
 # consumes them (docs/ROADMAP.md, direction call DC-1). Run by
 # manual dispatch after a release, and weekly on a schedule so a
 # toolchain or registry change that breaks stranger consumption
@@ -32,8 +32,8 @@ jobs:
         run: |
           cargo new scratch-consumer
           cd scratch-consumer
-          cargo add chronicle-core@0.2.0
-          cargo add chronicle-wal@0.2.0
+          cargo add chronicle-core@0.3.0
+          cargo add chronicle-wal@0.3.0
       - name: Write the smoke program
         run: |
           cat > scratch-consumer/src/main.rs <<'EOF'
@@ -108,7 +108,7 @@ jobs:
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Install chronicle-lob-cli from crates.io
-        run: cargo install chronicle-lob-cli --version 0.2.0 --root "$RUNNER_TEMP/chronicle-install"
+        run: cargo install chronicle-lob-cli --version 0.3.0 --root "$RUNNER_TEMP/chronicle-install"
       - name: Run the installed binary
         run: |
           "$RUNNER_TEMP/chronicle-install/bin/chronicle-cli" bench --ops 10000 --seed 1

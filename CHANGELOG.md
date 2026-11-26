@@ -76,10 +76,7 @@ helpers.
 - The CLI `checkpoint` subcommand, recovering a book from a log,
   writing and verifying a snapshot, and archiving the covered log
   under its sequence number (programme 3, lane T5).
-- Tag-triggered `.github/workflows/release.yml` building precompiled
-  Linux, macOS, and Windows `chronicle-cli` tarballs and
-  `SHA256SUMS`, paired with `[package.metadata.binstall]` metadata
-  in `chronicle-lob-cli`.
+- Tag-triggered `.github/workflows/release.yml`, `.github/workflows/publish.yml`, and `.github/workflows/pypi.yml` automating five-target GitHub Releases, crates.io OIDC publishing, and `chronicle-lob` PyPI wheel publishing alongside a typed Python SDK (`pyproject.toml`, `python/chronicle_lob`) and `[package.metadata.binstall]` metadata in `chronicle-lob-cli`.
 - Per-crate `README.md` files wired as doctests in `chronicle-core`
   and `chronicle-wal`, method doctests across core and WAL entry
   points, root `.gitignore`, `.github/dependabot.yml`, and pull

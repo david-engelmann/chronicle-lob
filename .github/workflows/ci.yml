@@ -429,6 +429,8 @@ jobs:
           diff -u crates/chronicle-core/examples/book_session.expected.txt /tmp/book_session.out
           cargo run --locked -p chronicle-wal --example wal_recovery > /tmp/wal_recovery.out
           diff -u crates/chronicle-wal/examples/wal_recovery.expected.txt /tmp/wal_recovery.out
+          cargo build --locked -p chronicle-lob-cli --bin chronicle-cli
+          python3 -m unittest discover -s python/tests -v
 
   # Roadmap programme 2, lane S4 (docs/ROADMAP.md): the test and
   # examples gates also run on macOS and Windows at PR volume, so

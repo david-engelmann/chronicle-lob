@@ -1,23 +1,24 @@
 name: publish-package
 
-# Packages one crate for a crates.io release (docs/ROADMAP.md,
-# direction call DC-1). Manual dispatch only. The job runs the
-# full cargo package verification build on the pinned toolchain
-# and uploads the .crate file as an artifact; the upload to
-# crates.io itself happens outside Actions with the owner's
-# credential, so no registry secret ever lives in this repo.
+# Automated crates.io deployment via GitHub Actions.
+# Supports crates.io OIDC Trusted Publishing (rust-lang/crates-io-auth-action)
+# across chronicle-core, chronicle-wal, and chronicle-lob-cli with fallback to
+# secrets.CARGO_REGISTRY_TOKEN when provided.
 
 on:
+  push:
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
-      crate:
-        description: "Crate to package"
+      mode:
+        description: "Run mode (publish to crates.io or package-only dry run)"
         required: true
         type: choice
+        default: "publish"
         options:
-          - chronicle-core
-          - chronicle-wal
-          - chronicle-lob-cli
+          - publish
+          - package-only
 
 permissions:
   contents: read
@@ -28,7 +29,7 @@ env:
 
 jobs:
   package:
-    name: package ${{ inputs.crate }}
+    name: verify and package crates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -47,14 +48,122 @@ jobs:
             ${{ runner.os }}-cargo-package-
             ${{ runner.os }}-cargo-test-
             ${{ runner.os }}-cargo-
-      - name: Package with full verification build
-        run: cargo package -p ${{ inputs.crate }} --locked
-      - name: Upload the packaged crate
+      - name: Verify crate and Python package version parity
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, sys, tomllib
+          expected = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+          for manifest in [
+              "crates/chronicle-core/Cargo.toml",
+              "crates/chronicle-wal/Cargo.toml",
+              "crates/chronicle-cli/Cargo.toml",
+          ]:
+              ver = tomllib.loads(pathlib.Path(manifest).read_text(encoding="utf-8"))["package"]["version"]
+              if ver != expected:
+                  sys.exit(f"{manifest} version {ver!r} != {expected!r}")
+          if os.environ.get("REF_TYPE") == "tag":
+              tag_ver = os.environ["REF_NAME"].removeprefix("v")
+              if tag_ver != expected:
+                  sys.exit(f"tag {os.environ['REF_NAME']!r} != {expected!r}")
+          print(f"verified version {expected}")
+          PY
+      - name: Package chronicle-core and verify downstream package lists
+        run: |
+          cargo package -p chronicle-core --locked
+          cargo package --list -p chronicle-wal --locked
+          cargo package --list -p chronicle-lob-cli --locked
+      - name: Upload packaged chronicle-core crate
         uses: actions/upload-artifact@v7
         with:
-          name: crate-${{ inputs.crate }}
-          # The glob keeps the workflow version-agnostic: the
-          # 0.1.0 literal it replaced failed the 0.2.0 packaging
-          # run when the packaged file carried the new version.
-          path: target/package/${{ inputs.crate }}-*.crate
+          name: crate-chronicle-core
+          path: target/package/chronicle-core-*.crate
           if-no-files-found: error
+
+  publish:
+    name: publish to crates.io
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish')
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+      - name: Cache cargo registry and target
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-package-
+            ${{ runner.os }}-cargo-
+      - name: Check secret token presence
+        id: check_secret
+        env:
+          SECRET_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -n "$SECRET_TOKEN" ]; then
+            echo "has_secret=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_secret=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Authenticate with crates.io via OIDC Trusted Publishing
+        if: steps.check_secret.outputs.has_secret != 'true'
+        id: oidc_auth
+        uses: rust-lang/crates-io-auth-action@v1
+      - name: Publish workspace crates in topological order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.check_secret.outputs.has_secret == 'true' && secrets.CARGO_REGISTRY_TOKEN || steps.oidc_auth.outputs.token }}
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, subprocess, sys, time, tomllib, urllib.error, urllib.request
+
+          version = tomllib.loads(pathlib.Path("crates/chronicle-core/Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
+          crates = ["chronicle-core", "chronicle-wal", "chronicle-lob-cli"]
+
+          def sparse_url(name: str) -> str:
+              low = name.lower()
+              return f"https://index.crates.io/{low[:2]}/{low[2:4]}/{low}"
+
+          def is_published(name: str, ver: str) -> bool:
+              req = urllib.request.Request(
+                  sparse_url(name),
+                  headers={"User-Agent": "chronicle-lob-release-ci/1.0", "Cache-Control": "no-cache"},
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      for line in resp.read().decode("utf-8").splitlines():
+                          if line.strip() and json.loads(line).get("vers") == ver:
+                              return True
+              except urllib.error.HTTPError as exc:
+                  if exc.code == 404:
+                      return False
+                  raise
+              return False
+
+          for idx, crate in enumerate(crates):
+              if is_published(crate, version):
+                  print(f"{crate}@{version} is already published on crates.io; skipping")
+                  continue
+              print(f"publishing {crate}@{version} to crates.io...")
+              subprocess.run(["cargo", "publish", "-p", crate, "--locked"], check=True)
+              if idx + 1 < len(crates):
+                  deadline = time.monotonic() + 180.0
+                  while time.monotonic() < deadline:
+                      if is_published(crate, version):
+                          print(f"{crate}@{version} is visible in the crates.io sparse index")
+                          break
+                      time.sleep(5)
+                  else:
+                      sys.exit(f"timed out waiting for {crate}@{version} in crates.io sparse index")
+          PY
