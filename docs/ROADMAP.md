@@ -1403,3 +1403,28 @@ binary-written snapshot.
 Programme 21 is complete: AL1 landed at b33fb8de
 (PR #92), and this closure record is AL2. The T
 set held one lane and it is closed.
+
+## Programme 22: the U set (opened 2026-11-26)
+
+The failure-side proofs: corruption handling
+agrees across the Rust and Python channels, not
+only the happy path.
+
+### Lane AM1: convict the same corruptions in both channels
+
+Three damaged forms of the interop log were put
+to both implementations. A flipped payload byte
+in the last frame: the binary convicts at offset
+144, checksum mismatch, computed 0x8aaadd19
+against stored 0x27d78e48, exit 1; the SDK
+reports not-ok with exit 1 and the identical
+conviction string, and its replay raises that
+string as a typed error. A torn tail, the last
+10 bytes cut: both channels apply the documented
+discard semantics, 2 frames with 62 bytes
+discarded, last sequence 2, verdict ok. Trailing
+garbage of 8 bytes: both convict at offset 216,
+bad magic, expected CWAL, exit 1. The line
+between a discardable torn tail and a convicted
+corrupt frame sits at the same place in both
+implementations. AM2 closes the programme.
