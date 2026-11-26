@@ -1308,3 +1308,16 @@ with the installed binary's bench running. The
 crates channel's stranger-consumption proof
 stands at 0.3.0 beside AJ1's binary-channel
 proof. AJ3 closes the programme.
+
+AJ2 outcome: the verify-published proof record
+landed at 0e3c1904 (PR #87), from dispatch
+45776133389 completed success on both jobs.
+
+Programme 19 is complete: AJ1 landed at 892a4c0f
+(PR #86), AJ2 at 0e3c1904 (PR #87), and this
+closure record is AJ3. The R set's two proofs
+stand: the shipped binary runs to contract from
+the release tarball, and the published 0.3.0
+crates work from a stranger's scratch project and
+a clean cargo install. Publication stands
+complete on every channel.
