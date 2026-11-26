@@ -5,6 +5,12 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md opens programme 20 and records
+  the PyPI channel's stranger proof: the SDK
+  installs clean, its bench agrees with the
+  release binary, and the full builder, replay,
+  verify, snapshot, and checkpoint round trip
+  runs (lane AK1).
 - docs/ROADMAP.md closes programme 19: the
   shipped-artifact and published-crate proofs
   are landed at 892a4c0f (PR #86) and 0e3c1904
