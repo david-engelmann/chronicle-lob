@@ -1367,3 +1367,29 @@ publication channels now carry a stranger
 consumption proof: the crates in programme 19,
 the release binaries in programme 19, and the
 PyPI package here.
+
+## Programme 21: the T set (opened 2026-11-26)
+
+The cross-channel format interop proof: the CWAL
+format is one format across the Rust and Python
+implementations, exchanged through files in both
+directions.
+
+### Lane AL1: exchange artifacts between the channels
+
+The Python SDK's WalBuilder wrote the three
+command log from programme 20 (216 bytes). The
+Rust release binary verified it clean (3 frames,
+0 discarded, last sequence 3, verdict ok),
+replayed it to event lines identical with the
+SDK's own replay report (accepted, accepted,
+trade at 99 for 4, filled), and wrote a snapshot
+from it at sequence 3 with 2 live orders. The
+Python SDK then verified the log against the
+binary-written snapshot and reported ok with the
+same snapshot fields. Both directions of the
+exchange hold. One usage note: the CLI takes its
+book configuration as required flags, the same
+configuration the SDK takes as an argument, so
+interop commands carry the config explicitly on
+both sides. AL2 closes the programme.

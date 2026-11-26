@@ -5,6 +5,11 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md opens programme 21 and records
+  the cross-channel interop proof: a Python
+  written log verifies, replays, and snapshots
+  under the Rust binary, and the SDK verifies
+  against the binary-written snapshot (lane AL1).
 - docs/ROADMAP.md closes programme 20: the PyPI
   stranger proof is landed at fcf8d8b9 (PR #89),
   and all three publication channels now carry
