@@ -52,7 +52,10 @@ jobs:
       - name: Install pinned toolchain for target
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
-          targets: ${{ matrix.target }}
+          target: ${{ matrix.target }}
+      - name: Ensure target standard library is installed
+        shell: bash
+        run: rustup target add "${{ matrix.target }}"
       - name: Cache cargo registry and target
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -125,6 +128,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         working-directory: release-assets
         run: |
           TAG="${GITHUB_REF_NAME}"
