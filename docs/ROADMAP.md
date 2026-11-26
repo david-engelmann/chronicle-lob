@@ -1393,3 +1393,13 @@ book configuration as required flags, the same
 configuration the SDK takes as an argument, so
 interop commands carry the config explicitly on
 both sides. AL2 closes the programme.
+
+AL1 outcome: the interop record landed at
+b33fb8de (PR #92). The Python-written log
+verified, replayed, and snapshotted under the
+Rust binary, and the SDK verified against the
+binary-written snapshot.
+
+Programme 21 is complete: AL1 landed at b33fb8de
+(PR #92), and this closure record is AL2. The T
+set held one lane and it is closed.

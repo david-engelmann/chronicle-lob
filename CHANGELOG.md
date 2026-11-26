@@ -5,6 +5,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md closes programme 21: the
+  cross-channel interop proof is landed at
+  b33fb8de (PR #92).
 - docs/ROADMAP.md opens programme 21 and records
   the cross-channel interop proof: a Python
   written log verifies, replays, and snapshots
