@@ -1321,3 +1321,34 @@ the release tarball, and the published 0.3.0
 crates work from a stranger's scratch project and
 a clean cargo install. Publication stands
 complete on every channel.
+
+## Programme 20: the S set (opened 2026-11-26)
+
+The third channel's stranger proof: the PyPI
+package gets the consumption check the crates and
+binary channels received in programme 19.
+
+### Lane AK1: consume the PyPI package end to end
+
+chronicle-lob 0.3.0 was installed from PyPI into a
+clean virtual environment and exercised as a
+stranger would. version() reports 0.3.0 and
+find_binary() locates the bundled chronicle-cli.
+bench at 10,000 operations under seed 1 returned
+applied 7216, rejected 2784, trades 3818,
+live_orders 41, best_bid 302, best_ask 322,
+identical to the release tarball binary's figures
+in AJ1: the channels agree deterministically.
+crc32c of the standard check input returns
+0xe3069283. A WalBuilder log of three commands
+(216 bytes) replays to the exact event stream
+(accepted, accepted, trade at 99 for 4, filled),
+verifies clean at 3 frames, snapshots at sequence
+3 with 2 live orders, verifies again against the
+snapshot, and checkpoints with the log archived
+under the documented name. Two contract notes,
+both surfaced as clear SDK errors rather than
+failures: replay and its siblings require exactly
+one of a snapshot path or a book configuration,
+and grid_len must be a multiple of 64. AK2 closes
+the programme.
