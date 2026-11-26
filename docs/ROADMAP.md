@@ -1352,3 +1352,18 @@ failures: replay and its siblings require exactly
 one of a snapshot path or a book configuration,
 and grid_len must be a multiple of 64. AK2 closes
 the programme.
+
+AK1 outcome: the PyPI proof record landed at
+fcf8d8b9 (PR #89). The package installed clean
+from the real index, its bench agreed with the
+release binary figure for figure, and the full
+builder, replay, verify, snapshot, and checkpoint
+round trip ran to contract.
+
+Programme 20 is complete: AK1 landed at fcf8d8b9
+(PR #89), and this closure record is AK2. The S
+set held one lane and it is closed. All three
+publication channels now carry a stranger
+consumption proof: the crates in programme 19,
+the release binaries in programme 19, and the
+PyPI package here.
