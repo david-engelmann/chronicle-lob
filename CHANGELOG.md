@@ -5,6 +5,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md closes programme 26: the
+  performance pass is landed at e4ccc745
+  (PR #102).
 - docs/ROADMAP.md opens programme 26 and records
   a full performance pass in PERFORMANCE.md:
   bench dispatch 45963423977 at 8f17d9f4, add

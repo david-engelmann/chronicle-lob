@@ -1563,3 +1563,11 @@ since the programme 16 pass, so no performance
 verdict is claimed against it; runner variance
 alone moves these numbers. AQ2 closes the
 programme.
+
+AQ1 outcome: the performance record landed at
+e4ccc745 (PR #102), the full criterion table in
+PERFORMANCE.md as the programme 26 section.
+
+Programme 26 is complete: AQ1 landed at e4ccc745
+(PR #102), and this closure record is AQ2. The Y
+set held one lane and it is closed.
