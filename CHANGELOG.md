@@ -43,6 +43,9 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md closes programme 28: the 0.3.1
+  release state and stranger proofs are landed
+  at 64c49d9c (PR #106) and 4bc6f924 (PR #108).
 - docs/ROADMAP.md records the programme 28
   stranger proofs at 0.3.1: the release binary
   and PyPI SDK match figure for figure, and the

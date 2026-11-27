@@ -1660,3 +1660,11 @@ orders, the embedded book config), and the CWAL
 decoder convicts the flipped log itself at offset
 144 with the same checksum pair, in its own
 wording. AS3 closes the programme.
+
+AS2 outcome: the stranger-proof record landed at
+4bc6f924 (PR #108). The 0.3.1 artifacts stand
+proven on every channel, decoders included.
+
+Programme 28 is complete: AS1 landed at 64c49d9c
+(PR #106), AS2 at 4bc6f924 (PR #108), and this
+closure record is AS3. The AS set is closed.
