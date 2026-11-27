@@ -1428,3 +1428,12 @@ bad magic, expected CWAL, exit 1. The line
 between a discardable torn tail and a convicted
 corrupt frame sits at the same place in both
 implementations. AM2 closes the programme.
+
+AM1 outcome: the failure-side record landed at
+1036e3f7 (PR #94). The flipped byte, the torn
+tail, and the trailing garbage were convicted or
+discarded identically by both channels.
+
+Programme 22 is complete: AM1 landed at 1036e3f7
+(PR #94), and this closure record is AM2. The U
+set held one lane and it is closed.

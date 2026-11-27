@@ -5,6 +5,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md closes programme 22: the
+  failure-side proofs are landed at 1036e3f7
+  (PR #94).
 - docs/ROADMAP.md opens programme 22 and records
   the failure-side proofs: a flipped byte, a
   torn tail, and trailing garbage are convicted
