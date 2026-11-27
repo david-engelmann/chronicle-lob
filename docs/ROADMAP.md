@@ -1615,3 +1615,25 @@ resolves or points at the project's own surfaces.
 Programme 27 is complete: AR1 landed at 6c86fc51
 (PR #104), and this closure record is AR2. The Z
 set held one lane and it is closed.
+
+## Programme 28: the AS set (opened 2026-11-27)
+
+The 0.3.1 release-state audit and stranger-proof
+re-verification, on the pattern of programmes 18
+to 22 at 0.3.0.
+
+### Lane AS1: record the 0.3.1 release state
+
+State, verified from the outside: PR #91 landed
+at d61cd88b on 2026-11-27, carrying the CLI
+library target and the SDK's Python CWAL and CSNP
+decoders. The annotated tag v0.3.1 points at
+d61cd88b itself. Release run 46018313635 at that
+commit completed success, and the GitHub Release
+v0.3.1 stands published with five binary tarballs
+plus SHA256SUMS. crates.io carries 0.3.1 as the
+max version for all three crates, and PyPI
+carries chronicle-lob at 0.3.1. verify-published
+stands re-pinned to 0.3.1 with its Monday 06:17
+UTC schedule unchanged. AS2 re-runs the stranger
+proofs against the 0.3.1 artifacts.

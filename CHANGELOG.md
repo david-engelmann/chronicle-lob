@@ -43,6 +43,10 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md opens programme 28 and records
+  the 0.3.1 release state: tag at d61cd88b,
+  crates.io and PyPI at 0.3.1, GitHub Release
+  published with six assets (lane AS1).
 - docs/ROADMAP.md closes programme 27: the
   post-launch links audit is landed at 6c86fc51
   (PR #104), clean.
