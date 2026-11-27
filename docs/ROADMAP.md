@@ -1532,3 +1532,11 @@ no CLI counterpart since the CLI never writes
 logs, and the CLI's bench JSON flag has no SDK
 counterpart because the SDK returns the report
 object itself. AP2 closes the programme.
+
+AP1 outcome: the parity record landed at 3242a990
+(PR #100). The SDK and CLI surfaces stand in
+parity, no gaps, two by-design asymmetries.
+
+Programme 25 is complete: AP1 landed at 3242a990
+(PR #100), and this closure record is AP2. The X
+set held one lane and it is closed.
