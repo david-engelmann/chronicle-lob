@@ -1473,3 +1473,22 @@ enforcement missing.
 Programme 23 is complete: AN1 landed at 041398b8
 (PR #96), and this closure record is AN2. The V
 set held one lane and it is closed.
+
+## Programme 24: the W set (opened 2026-11-26)
+
+The deep mutation exercise in its rotation: the
+post-launch decoders re-exercised at full volume
+under the next derived seed.
+
+### Lane AO1: run the deep mutation exercise
+
+Exercise: mutation-deep dispatch run 45933787610
+at main 041398b8 completed success. Outcome,
+verified from the job log: the seed in force was
+70008, CHRONICLE_MUTATION_CASES stood at 100000,
+and all fifteen mutation tests passed (the
+single-point, multi-point, streaming-pair, and
+CRC-recomputing structural forms). No panic, no
+conviction. This is the eighth clean deep
+exercise and the second against the post-launch
+decoders. AO2 closes the programme.
