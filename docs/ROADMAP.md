@@ -1540,3 +1540,26 @@ parity, no gaps, two by-design asymmetries.
 Programme 25 is complete: AP1 landed at 3242a990
 (PR #100), and this closure record is AP2. The X
 set held one lane and it is closed.
+
+## Programme 26: the Y set (opened 2026-11-27)
+
+The performance refresh in its rotation: a full
+criterion pass on the current main, recorded in
+PERFORMANCE.md under the standing discipline.
+
+### Lane AQ1: run the performance pass
+
+Bench dispatch run 45963423977 at 8f17d9f4
+completed success. Figures, slope point
+estimates: add 44.02 ns, cancel 24.08 ns,
+best_bid_ask 11.80 ns, amend 25.49 ns, mass
+cancel 75.14 ns per order at a batch of 800,
+sweep 18.61 us, depth 394.68 ns, wal append
+41.98 ns per frame at 1.5972 GiB/s, recovery
+402.74 us at 852.47 MiB/s, recovery from reader
+435.40 us at 788.52 MiB/s, snapshot round trip
+1.87 ms at 481.98 MiB/s. No core code changed
+since the programme 16 pass, so no performance
+verdict is claimed against it; runner variance
+alone moves these numbers. AQ2 closes the
+programme.
