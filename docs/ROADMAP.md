@@ -1637,3 +1637,26 @@ carries chronicle-lob at 0.3.1. verify-published
 stands re-pinned to 0.3.1 with its Monday 06:17
 UTC schedule unchanged. AS2 re-runs the stranger
 proofs against the 0.3.1 artifacts.
+
+### Lane AS2: re-run the stranger proofs at 0.3.1
+
+All proofs pass. The 0.3.1 release binary (tarball
+514,059 bytes) prints bench figures identical to
+0.3.0 at 10,000 ops under seed 1 (applied 7216,
+rejected 2784, trades 3818, live orders 41, best
+bid 302, best ask 322), verifies the interop log,
+and convicts the flipped log with the identical
+checksum detail. The PyPI SDK at 0.3.1 matches it
+figure for figure, and the crc32c check value
+holds. The new Python decoders carry their own
+proof: read_wal_frames decodes the interop log's
+three frames field for field (participants 7, 8,
+9; prices 99, 101, 99), iter_wal_frames yields the
+same frames (read returns a tuple, the iterator a
+list, contents identical), read_snapshot_header
+reads the Rust-written snapshot exactly (version
+1, last included seq 3, next seq 4, two live
+orders, the embedded book config), and the CWAL
+decoder convicts the flipped log itself at offset
+144 with the same checksum pair, in its own
+wording. AS3 closes the programme.
