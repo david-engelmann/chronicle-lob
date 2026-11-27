@@ -1,241 +1,194 @@
-<p align="center">
-  <a href="https://github.com/david-engelmann/chronicle-lob">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/chronicle-lockup-dark.svg">
-      <img src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/chronicle-lockup-light.svg" alt="chronicle-lob" height="56">
-    </picture>
-  </a>
-</p>
-
-<h3 align="center">Deterministic limit order book and matching engine in Rust, with zero hot-path allocation.</h3>
-
-<p align="center">
-  <code>chronicle-lob</code> maintains a single-market price-time limit order book on a bounded integer tick grid, matches incoming orders against resting liquidity, persists every accepted command to a checksummed write-ahead log, and rebuilds exact book state across crashes and checkpoints in bounded memory.
-</p>
-
-<p align="center">
-  <a href="https://david-engelmann.github.io/chronicle-lob/"><b>Docs</b></a> ·
-  <a href="https://github.com/david-engelmann/chronicle-lob/tree/main/examples">Examples</a> ·
-  <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ARCHITECTURE.md">Architecture</a> ·
-  <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md">Invariants</a> ·
-  <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/PERFORMANCE.md">Performance</a> ·
-  <a href="https://github.com/david-engelmann/chronicle-lob/releases">Releases</a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/david-engelmann/chronicle-lob/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/david-engelmann/chronicle-lob/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="CI on main"></a>
-  <a href="https://crates.io/crates/chronicle-core"><img src="https://img.shields.io/crates/v/chronicle-core?color=c25e00&label=crates.io" alt="crates.io version"></a>
-  <a href="https://pypi.org/project/chronicle-lob/"><img src="https://img.shields.io/pypi/v/chronicle-lob?color=c25e00&label=pypi" alt="PyPI version"></a>
-  <a href="https://docs.rs/chronicle-core"><img src="https://img.shields.io/docsrs/chronicle-core" alt="docs.rs"></a>
-  <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue" alt="MIT or Apache-2.0 license"></a>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/money-shot.gif"
-       alt="A two-part view with live order book depth and durability telemetry above and real terminal runs below, executing book_session, wal_recovery across a snapshot and checkpoint seam, and the 1,000,000-operation zero-allocation proof"
-       width="900">
-</p>
-
-<p align="center"><sub>Every terminal line above comes from real runs of the <code>book_session</code> and <code>wal_recovery</code> examples and the <code>alloc_proof</code> test target, pinned and checked in continuous integration on Linux, macOS, and Windows.</sub></p>
-
-## Why chronicle-lob
-
-Order books sit on the critical path of exchanges, matching simulators, risk gates, and historical replay pipelines. General-purpose collection types allocate on the heap during bursts, scatter resting orders across cache lines, and drift when hash iteration or wall-clock calls enter matching logic. `chronicle-lob` fixes memory layout up front and treats determinism as a hard invariant rather than an accident.
-
-- **Strict price-time priority.** Buy and sell orders rest on a bounded integer tick grid and match by best price first and arrival order second, always executing at the resting maker price.
-- **Zero steady-state heap allocation.** Orders live in a preallocated struct-of-arrays arena indexed by 32-bit slot indices, active price levels sit under a 64-ary hierarchical bitmap (`O(bitmap depth)` best-price and sparse level walks), and events write into a caller-owned `EventBuffer`.
-- **Atomic preflight before mutation.** Every command checks grid bounds, capacity, fill-or-kill liquidity, post-only crossing, and event buffer room before touching book state. A rejected command mutates nothing, emits zero events, and leaves sequence numbers untouched.
-- **Four order types, priority-aware amend, mass cancel, and self-trade prevention.** Supports `Limit`, `Ioc`, `Fok`, and `PostOnly` orders, quantity reductions that keep FIFO priority, price or size increases that re-queue at tail, single-call participant mass cancel, and per-order self-trade prevention policies.
-- **Crash-safe persistence in bounded memory.** `chronicle-wal` frames commands with Castagnoli CRC32C checksums, writes atomic snapshots and verified checkpoints, rejects crafted corrupt snapshots unconditionally in both debug and release builds, and streams verification, replay, and crash recovery in roughly 8 KiB of buffer space.
-- **Pure standard-library core.** `chronicle-core` has zero external dependencies, forbids `unsafe` code, reads no clock, and draws no ambient randomness.
-
-<p align="center">
+<div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/guarantees-dark.svg">
-    <img src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/guarantees-light.svg"
-         alt="Four verified chronicle-lob guarantees covering zero steady-state allocations across one million operations, zero external crates in chronicle-core, 8 KiB bounded streaming recovery, and dual-seed 10,000-case differential property sweeps"
-         width="860">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/chronicle-lockup-dark.svg">
+    <img alt="chronicle-lob" src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/chronicle-lockup-light.svg" height="58">
   </picture>
-</p>
-
-## How it works
+  <p><strong>Single-threaded, deterministic limit order book, Castagnoli CRC32C write-ahead log, and bounded-memory recovery CLI in safe Rust.</strong></p>
+  <p>
+    <a href="https://github.com/david-engelmann/chronicle-lob/actions/workflows/ci.yml"><img src="https://github.com/david-engelmann/chronicle-lob/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://crates.io/crates/chronicle-core"><img src="https://img.shields.io/crates/v/chronicle-core?label=chronicle-core" alt="chronicle-core on crates.io"></a>
+    <a href="https://crates.io/crates/chronicle-wal"><img src="https://img.shields.io/crates/v/chronicle-wal?label=chronicle-wal" alt="chronicle-wal on crates.io"></a>
+    <a href="https://pypi.org/project/chronicle-lob/"><img src="https://img.shields.io/pypi/v/chronicle-lob?label=pypi%20chronicle-lob" alt="chronicle-lob on PyPI"></a>
+    <a href="https://docs.rs/chronicle-core"><img src="https://img.shields.io/docsrs/chronicle-core?label=docs.rs" alt="docs.rs"></a>
+    <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue" alt="MIT OR Apache-2.0"></a>
+  </p>
+  <p>
+    <a href="https://david-engelmann.github.io/chronicle-lob/">Documentation Book</a> ·
+    <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ARCHITECTURE.md">Architecture</a> ·
+    <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md">Invariants</a> ·
+    <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/PERFORMANCE.md">Benchmarks</a> ·
+    <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/COMPARISON.md">Comparison</a> ·
+    <a href="https://github.com/david-engelmann/chronicle-lob/tree/main/examples">Examples</a>
+  </p>
+</div>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/how-it-works-dark.svg">
-    <img src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/how-it-works-light.svg"
-         alt="Inbound add, amend, cancel, and query commands flow into chronicle-core with preflight validation, 64-ary bitmaps, a struct-of-arrays arena, open-addressed ID lookup, checked u128 arithmetic, and caller EventBuffer, backed by chronicle-wal CRC32C frames and snapshots, producing deterministic execution events, exact crash recovery, and CLI operations"
-         width="860">
-  </picture>
+  <img src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/money-shot.gif" alt="chronicle-lob live order book state, atomic CSNP checkpointing, CWAL crash recovery, and counting-allocator proof" width="880">
 </p>
 
-| Crate | Kind | External runtime deps | Role |
-| --- | --- | --- | --- |
-| [`chronicle-core`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-core/README.md) | library | none (`std` only) | Deterministic matching engine, 64-ary hierarchical bitmaps, SoA order arena, zero-allocation L2 and L3 book queries, and independent `ReferenceBook` differential oracle. |
-| [`chronicle-wal`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-wal/README.md) | library | none (`std` only) | Slicing-by-8 CRC32C write-ahead log, atomic snapshot codec with unconditional invariant checks, multi-cycle checkpointing, and bounded-memory streaming recovery. |
-| [`chronicle-lob-cli`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-cli/README.md) | library + binary (`chronicle-cli`) | `clap`, `serde_json` | Operator CLI and library for `verify`, `replay`, `snapshot`, `checkpoint`, seeded synthetic `bench` runs, and shell `completions`. |
+`chronicle-lob` prices one instrument on an exact integer tick grid with strict price-time (FIFO) priority. Every capacity bound is fixed at `Book::new`, steady-state matching performs **zero heap allocations** (`INV-ALLOC-1`), `chronicle-core` depends only on the Rust standard library with `#![forbid(unsafe_code)]`, and identical command streams produce byte-identical execution events, WAL frames, and snapshots across platforms (`INV-DET-1`).
 
-## Quickstart
+---
 
-Install the precompiled operator CLI with the checksum-verifying installer, from crates.io, with `cargo-binstall`, or from PyPI, or add `chronicle-core` and `chronicle-wal` to a Rust project.
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/install.sh | sh
-# or install with Cargo
-cargo install chronicle-lob-cli
-# or install the CLI and Python SDK from PyPI
-pip install chronicle-lob
-```
+## Embed in Rust
 
 ```toml
 [dependencies]
 chronicle-core = "0.3"
-chronicle-wal = "0.3"
+chronicle-wal = "0.3" # optional: CWAL v1 log, CSNP v1 snapshots, and 8 KiB streaming recovery
 ```
-
-```python
-import chronicle_lob
-
-summary = chronicle_lob.bench(ops=100_000, seed=42)
-
-wal = chronicle_lob.WalBuilder()
-wal.add(order_id=1, participant=7, side="ask", price=100, qty=10)
-frames = chronicle_lob.read_wal_frames(wal.to_bytes())
-
-config = chronicle_lob.BookSpec(max_orders=64, grid_len=640, tick_size=1, grid_start_tick=1)
-wal.write("session.wal")
-chronicle_lob.snapshot("session.wal", "session.snap", config=config)
-header = chronicle_lob.read_snapshot_header("session.snap")
-```
-
-### Embedding the matching engine
-
-Prices are plain integers in the smallest quote unit, and `BookConfig` defines the valid tick grid and arena capacity. Commands append typed `ExecutionEvent` records into a caller-owned buffer.
 
 ```rust
 use chronicle_core::{
-    Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderType,
-    ParticipantId, Side, StpPolicy,
+    Book, BookConfig, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId, Side,
+    StpPolicy,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut book = Book::new(BookConfig {
-        max_orders: 1024,
-        grid_len: 4096,
+        max_orders: 65_536,
+        grid_len: 4_096, // multiple of 64 in 64..=4_194_304
         tick_size: 1,
-        grid_start_tick: 0,
+        grid_start_tick: 1,
         default_stp: StpPolicy::CancelIncoming,
     })?;
 
-    let mut storage: Vec<ExecutionEvent> = Vec::with_capacity(64);
-    let mut events = EventBuffer::new(&mut storage);
+    // Allocate caller-owned event scratch once; reuse across every command on the hot path.
+    let mut scratch: Vec<ExecutionEvent> = Vec::with_capacity(64);
 
-    // Rest a sell order for 10 units at price 100.
-    book.add_order(
-        OrderId(1),
-        ParticipantId(7),
-        Side::Ask,
-        OrderType::Limit,
-        100,
-        10,
-        None,
-        &mut events,
-    )?;
+    {
+        let mut events = EventBuffer::new(&mut scratch);
+        book.add_order(
+            OrderId(1), ParticipantId(10), Side::Ask, OrderType::PostOnly, 101, 15, None, &mut events,
+        )?;
+    }
+    scratch.clear();
 
-    // A buy order at the same price trades with it in full.
-    book.add_order(
-        OrderId(2),
-        ParticipantId(8),
-        Side::Bid,
-        OrderType::Limit,
-        100,
-        10,
-        None,
-        &mut events,
-    )?;
+    {
+        let mut events = EventBuffer::new(&mut scratch);
+        let written = book.add_order(
+            OrderId(2), ParticipantId(20), Side::Bid, OrderType::Ioc, 101, 6, None, &mut events,
+        )?;
+        assert_eq!(written, 2); // ExecutionEvent::Trade + ExecutionEvent::Filled
+    }
+    scratch.clear();
 
-    // storage now holds Accepted, Accepted, Trade, Filled, Filled events.
-    assert_eq!(book.live_order_count(), 0);
+    assert_eq!(book.best_ask(), Some((101, 9)));
     Ok(())
 }
 ```
 
-### Persistence, checkpointing, and CLI inspection
+### Install the CLI or Python SDK
 
-The `wal_recovery` worked example writes a five-command trading session to a write-ahead log, saves a snapshot partway through, recovers the book from the snapshot and log tail, checkpoints the session onto a fresh log, and verifies recovery across the checkpoint seam.
+```sh
+# Precompiled Linux / macOS binary verified against SHA256SUMS
+curl -fsSL https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/install.sh | sh
+
+# Cargo / cargo-binstall
+cargo install chronicle-lob-cli
+
+# Python 3.9+ SDK + bundled chronicle-cli wheel
+pip install chronicle-lob
+```
+
+---
+
+## Memory Layout: Bitmaps, Lookup Table, and SoA Arena
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/demo.gif"
-       alt="The wal_recovery example recovering a book from its write-ahead log and checkpointing it, with the recovered book matching the live book"
-       width="820">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/book-memory-layout-dark.svg">
+    <img alt="Internal memory layout of chronicle-core::Book showing the 64-ary active-tick bitmap hierarchy, open-addressed SplitMix64 lookup table, and preallocated struct-of-arrays order arena" src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/book-memory-layout-light.svg" width="920">
+  </picture>
 </p>
 
+Rather than storing price levels in a `BTreeMap<Price, VecDeque<Order>>` that allocates nodes and chases pointers on bursts, `chronicle-core::Book` pairs three preallocated structures:
+
+1. **64-ary hierarchical active-tick bitmaps (`bitmap.rs`).** Separate bid and ask hierarchies summarize active grid indices in 64-bit words up to a single root `u64` (depth `<= 4` for `grid_len <= 2^22`). Best ask (`trailing_zeros`), best bid (`ilog2`), and L2 neighbour walks (`lowest_above` / `highest_below`) complete in `O(bitmap depth)` word operations regardless of grid sparsity (`INV-BITMAP-1`).
+2. **Open-addressed `OrderId` lookup with Knuth Algorithm R (`lookup.rs`).** A fixed power-of-two table (`capacity >= 2 * max_orders`, load factor `<= 50%`) hashes `OrderId` via a fixed `SplitMix64` finalizer and deletes entries by backward shift rather than tombstones, so lookup never degrades across long cancel/add churn (`INV-LOOKUP-1..3`). Every slot dereference checks `lookup.gen == arena.generation[slot]` (`INV-ARENA-3`) to eliminate stale-handle ABA bugs without `unsafe`.
+3. **Struct-of-arrays order arena (`arena.rs`).** Parallel `Vec` columns (`qty`, `next`, `side`, `state`, `prev`, `order_id`, `participant`, `price_idx`, `generation`) are sized once to `max_orders`. During an incoming sweep, only the hot columns (`qty`, `next`, `side`) stream through 64-byte cache lines; released slots are zeroed before re-entering the intrusive LIFO free list (`INV-ARENA-2`).
+4. **Three-phase atomic preflight (`book.rs`).** Every mutating command (`add_order`, `amend_order`, `cancel_order`, `cancel_by_participant`) validates tick alignment, capacity, STP-adjusted `Fok` executable quantity (`INV-ORD-1`), `PostOnly` crossing (`INV-ORD-2`), and worst-case `EventBuffer` headroom before mutating state. Any error leaves the book and `seq` bit-identical (`INV-ORD-4`, `INV-EVENT-1`). Quantity reductions via `amend_order` preserve FIFO queue priority (`INV-AMEND-1`); price changes or size increases move to the level tail (`INV-AMEND-2`).
+
+---
+
+## Wire Format (`CWAL` v1) & Bounded-Memory Recovery (`CSNP` v1)
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/wal-recovery-layout-dark.svg">
+    <img alt="CWAL v1 binary frame byte offsets, Castagnoli CRC32C domain separation, and bounded 8 KiB CSNP snapshot plus WAL crash-recovery seam" src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/wal-recovery-layout-light.svg" width="920">
+  </picture>
+</p>
+
+`chronicle-wal` persists accepted commands (never rejected attempts or derived events) and structural book snapshots:
+
+- **Domain-separated Castagnoli CRC32C.** Every `CWAL` v1 frame hashes `"chronicle-wal/v1\0" || header[0..28] || payload`, and every `CSNP` v1 snapshot hashes `"chronicle-snapshot/v1\0" || header_and_body`, preventing cross-file or cross-version validation collisions (`INV-WAL-3`).
+- **Verbatim structural snapshots.** `CSNP` v1 persists slot generations, `free_list_head`, every free-slot LIFO link, level headers, and live arena records via `.tmp -> sync_all -> rename -> parent dir sync` (`INV-SNAP-2`). Because exact slot assignment and LIFO free-list order are preserved, post-restore mass cancels (`cancel_by_participant`) emit identical event ordering to an uninterrupted process (`INV-SNAP-3`).
+- **Sharp crash-boundary vs corruption rules.** `scan_reader_with` and `recover_from_reader` stream multi-gigabyte logs in ~8 KiB of buffer space. A truncated trailing frame whose present fixed bytes match a valid `CWAL` v1 header prefix is classified as a clean crash tail (`discarded=N`, exit `0`); a wrong fixed byte, nonzero reserved field, CRC mismatch, or sequence gap fails with a typed `CorruptWalRecord` or `WalSequenceGap` carrying the exact byte offset (`INV-WAL-2`, exit `1`).
+
+### Operator CLI & Pure-Python Binary Codecs
+
 ```sh
-cargo run --locked -p chronicle-wal --example wal_recovery
-```
+# Verify a snapshot + WAL seam in ~8 KiB RAM (exit 0 healthy, 1 corrupt, 2 usage/IO)
+chronicle-cli verify --wal session.wal --snapshot session.snap
 
-`chronicle-cli` inspects, replays, snapshots, checkpoints, and benchmarks session files in bounded memory. Every subcommand accepts `--seed` and honours `SIM_SEED`.
+# Replay deterministic execution events from a snapshot checkpoint
+chronicle-cli replay --wal session.wal --snapshot session.snap
 
-```sh
-chronicle-cli verify --wal session.wal --snapshot session.snapshot
-```
+# Roll an atomic checkpoint snapshot and archive the covered WAL segment
+chronicle-cli checkpoint --wal session.wal --snapshot session.snap --out session.snap
 
-```text
-snapshot: ok last_included_seq=3 live_orders=2
-wal: ok frames=5 discarded=0 last_seq=5
-verdict: ok
-```
-
-```sh
-chronicle-cli replay --wal session.wal --snapshot session.snapshot
-```
-
-```text
-seed=0
-4 amended order=1 price=99 qty=6
-5 cancelled order=2 reason=requested
-```
-
-```sh
+# Run a seeded synthetic workload and emit single-line JSON metrics
 chronicle-cli bench --ops 100000 --seed 42 --json
-chronicle-cli completions <bash|zsh|fish|powershell>
 ```
 
-## Verification and performance
+The `chronicle_lob` Python package includes zero-dependency pure-Python `CWAL` v1 and `CSNP` v1 codecs alongside typed CLI wrappers:
 
-Run the full workspace verification gate locally.
+```python
+from pathlib import Path
+import chronicle_lob as cl
 
-```sh
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --workspace --locked
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
-cargo bench --workspace --locked -- --test
+spec = cl.BookSpec(max_orders=4096, grid_len=1024, tick_size=1, grid_start_tick=1)
+wal = Path("session.wal")
+
+builder = cl.WalBuilder()
+builder.add_order(order_id=1, participant=7, side="bid", order_type="limit", price=99, qty=10)
+builder.add_order(order_id=2, participant=8, side="ask", order_type="ioc", price=99, qty=4)
+builder.write(wal)
+
+frames = cl.read_wal_frames(wal)          # verifies "chronicle-wal/v1\0" CRC32C in pure Python
+verdict = cl.verify(wal, spec=spec)       # drives chronicle-cli verify
+replay = cl.replay(wal, spec=spec)        # parses <seq> <event> records
+assert verdict.ok and len(frames) == 2
 ```
 
-Property tests run the production `Book` lockstep against an independent `BTreeMap` and `VecDeque` `ReferenceBook` and compare full event streams and book snapshots after every command. Pull requests run 1,000 cases per property and `main` runs two independent 10,000-case sweeps on rotating seeds. Dedicated counting-allocator proof targets verify zero steady-state heap allocations across one million mixed commands, and CRC-recomputing structural mutation suites exercise snapshot and WAL decoders against adversarial byte tampering.
+---
 
-Per [CHECK-DOC-1](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md), measured Criterion baselines live exclusively in [docs/PERFORMANCE.md](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/PERFORMANCE.md) alongside the exact benchmark name, book occupancy, commit hash, and runner class that produced them.
+## Verification & Differential Oracles
 
-## Documentation
+Every guarantee in [`docs/INVARIANTS.md`](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md) is enforced in CI on Linux, macOS, and Windows:
 
-| If you want to... | Read |
-| --- | --- |
-| Read the published book and quickstart guide | [Published docs](https://david-engelmann.github.io/chronicle-lob/) · [Quickstart](https://david-engelmann.github.io/chronicle-lob/quickstart.html) · [CLI and Python SDK](https://david-engelmann.github.io/chronicle-lob/cli-and-python.html) |
-| Run end-to-end Rust, Python SDK, and CLI crash-recovery scripts | [Runnable examples](https://github.com/david-engelmann/chronicle-lob/tree/main/examples) |
-| Understand the arena, bitmaps, WAL framing, and snapshot byte layout | [Architecture](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ARCHITECTURE.md) · [Decisions](https://github.com/david-engelmann/chronicle-lob/blob/main/DECISIONS.md) |
-| Audit every correctness, durability, and allocation invariant | [Invariants and traceability matrix](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md) |
-| Inspect recorded Criterion latency and throughput baselines | [Performance baseline](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/PERFORMANCE.md) |
-| Compare against heap books, ring-buffer engines, and float backtesters | [How chronicle-lob compares](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/COMPARISON.md) |
-| Find answers on tick math, priority rules, and bounded-memory recovery | [FAQ](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/FAQ.md) |
-| Embed or drive chronicle-lob from an AI coding agent or harness | [Agent guide](https://github.com/david-engelmann/chronicle-lob/blob/main/AGENTS.md) |
-| Browse generated Rust API docs and crate guides | [docs.rs/chronicle-core](https://docs.rs/chronicle-core) · [docs.rs/chronicle-wal](https://docs.rs/chronicle-wal) · [docs.rs/chronicle-lob-cli](https://docs.rs/chronicle-lob-cli) |
-| Check releases, security policy, and repository index | [Releases](https://github.com/david-engelmann/chronicle-lob/releases) · [Changelog](https://github.com/david-engelmann/chronicle-lob/blob/main/CHANGELOG.md) · [Security policy](https://github.com/david-engelmann/chronicle-lob/blob/main/SECURITY.md) · [Docs index](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/README.md) |
+- **Steady-state zero-allocation proof (`alloc_proof.rs`).** A counting global allocator runs `1,000,000` mixed adds, matches, amends, cancels, depth snapshots, and `EventBuffer` drains after `Book::new` and asserts `0` allocations and `0` bytes (`INV-ALLOC-1..3`).
+- **Dual-seed differential `ReferenceBook` sweeps.** `10,000 x 2` seeded `proptest` command sequences compare `chronicle-core::Book` event-for-event and level-for-level against an independent `BTreeMap` + `VecDeque` oracle (`INV-BOOK-1..5`).
+- **Crash-tail & byte-flip fault matrix.** Exhaustive truncation and byte-corruption tests exercise every row of the `CWAL` v1 and `CSNP` v1 disambiguation tables (`INV-WAL-2`, `INV-SNAP-1`), complemented by standalone `cargo-fuzz` targets under [`fuzz/`](https://github.com/david-engelmann/chronicle-lob/tree/main/fuzz).
+- **Source determinism scan (`INV-DET-1`).** CI scans `chronicle-core` and `chronicle-wal` source text to forbid `SystemTime`, `Instant`, `thread_rng`, `RandomState`, `DefaultHasher`, `HashMap`, and `HashSet`.
+- **Recorded latency and throughput baselines.** Criterion microbenchmark baselines with commit and hardware provenance live exclusively in [`docs/PERFORMANCE.md`](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/PERFORMANCE.md) (`CHECK-DOC-1`).
 
-## Contributing
+---
 
-[CONTRIBUTING.md](https://github.com/david-engelmann/chronicle-lob/blob/main/CONTRIBUTING.md) covers toolchain setup, determinism rules, contract-first testing, and the pull request gate.
+## Workspace Crates & Reference Docs
+
+| Package | Registry | Scope |
+| --- | --- | --- |
+| [`chronicle-core`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-core/README.md) | [crates.io](https://crates.io/crates/chronicle-core) · [docs.rs](https://docs.rs/chronicle-core) | Zero-dependency matching engine, 64-ary bitmaps, SoA arena, and `EventBuffer` (`#![forbid(unsafe_code)]`). |
+| [`chronicle-wal`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-wal/README.md) | [crates.io](https://crates.io/crates/chronicle-wal) · [docs.rs](https://docs.rs/chronicle-wal) | `CWAL` v1 writer/scanner, atomic `CSNP` v1 snapshots, and ~8 KiB streaming crash recovery (`std` only). |
+| [`chronicle-lob-cli`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-cli/README.md) | [crates.io](https://crates.io/crates/chronicle-lob-cli) · [docs.rs](https://docs.rs/chronicle-lob-cli) | `chronicle-cli` binary (`verify`, `replay`, `snapshot`, `checkpoint`, `bench`, `completions`). |
+| [`chronicle-lob`](https://pypi.org/project/chronicle-lob/) | [PyPI](https://pypi.org/project/chronicle-lob/) | Pure-Python `CWAL` / `CSNP` binary codecs and typed `chronicle-cli` SDK. |
+
+- **Specifications:** [`docs/ARCHITECTURE.md`](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ARCHITECTURE.md) · [`docs/INVARIANTS.md`](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md) · [`docs/PERFORMANCE.md`](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/PERFORMANCE.md)
+- **Guides & Context:** [Published Documentation Book](https://david-engelmann.github.io/chronicle-lob/) · [`docs/COMPARISON.md`](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/COMPARISON.md) · [`docs/FAQ.md`](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/FAQ.md) · [`examples/`](https://github.com/david-engelmann/chronicle-lob/tree/main/examples) · [`AGENTS.md`](https://github.com/david-engelmann/chronicle-lob/blob/main/AGENTS.md)
+- **Project Policies:** [`SECURITY.md`](https://github.com/david-engelmann/chronicle-lob/blob/main/SECURITY.md) · [`CONTRIBUTING.md`](https://github.com/david-engelmann/chronicle-lob/blob/main/CONTRIBUTING.md) · [`CHANGELOG.md`](https://github.com/david-engelmann/chronicle-lob/blob/main/CHANGELOG.md)
 
 ## License
 
-Licensed under either of [MIT](https://github.com/david-engelmann/chronicle-lob/blob/main/LICENSE-MIT) or [Apache-2.0](https://github.com/david-engelmann/chronicle-lob/blob/main/LICENSE-APACHE) at your option.
+Licensed under either of [Apache License, Version 2.0](https://github.com/david-engelmann/chronicle-lob/blob/main/LICENSE-APACHE) or [MIT License](https://github.com/david-engelmann/chronicle-lob/blob/main/LICENSE-MIT), at your option.
