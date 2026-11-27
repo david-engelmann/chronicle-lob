@@ -1437,3 +1437,29 @@ discarded identically by both channels.
 Programme 22 is complete: AM1 landed at 1036e3f7
 (PR #94), and this closure record is AM2. The U
 set held one lane and it is closed.
+
+## Programme 23: the V set (opened 2026-11-26)
+
+The post-launch traceability re-audit: programme
+5's V4 audit ran against the pre-launch tree, and
+the launch reworked the core, so the INVARIANTS
+matrix is re-verified against the current
+sources.
+
+### Lane AN1: re-audit the INVARIANTS traceability
+
+Verdict: the matrix is sound, no repairs
+required. The current docs/INVARIANTS.md carries
+53 rows; 114 candidate enforcement names were
+extracted from the enforcement column and checked
+against the sources, and 111 resolve verbatim.
+The three that do not are classified, none of
+them a missing enforcement: thread_rng is a
+prohibited construct whose absence from the
+sources is the determinism invariant holding;
+crossed_book and level_count are descriptive
+prose names for checks that stand in
+debug_assert_invariants under the code's own
+identifiers, the crossed-book assertion and the
+levels.count array the bitmap checker recomputes
+from. AN2 closes the programme.
