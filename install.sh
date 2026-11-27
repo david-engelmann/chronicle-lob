@@ -4,7 +4,6 @@ set -eu
 
 REPO="david-engelmann/chronicle-lob"
 DEFAULT_BASE_URL="https://github.com/${REPO}/releases"
-API_LATEST_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
 VERSION="${VERSION:-}"
 INSTALL_DIR="${INSTALL_DIR:-${HOME}/.local/bin}"
@@ -48,15 +47,27 @@ fetch() {
   fi
 }
 
-fetch_text() {
-  src_url="$1"
+resolve_latest_tag() {
+  root_url="${1%/}"
+  latest_url="${root_url}/latest"
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "${src_url}"
+    effective="$(curl -fsSL -o /dev/null -w '%{url_effective}' "${latest_url}")" ||
+      err "failed to resolve latest release from ${latest_url}"
   elif command -v wget >/dev/null 2>&1; then
-    wget -qO- "${src_url}"
+    effective="$(wget -S --spider "${latest_url}" 2>&1 | awk '/^  Location: / { loc=$2 } END { print loc }' | tr -d '\r')"
+    [ -n "${effective}" ] || err "failed to resolve latest release from ${latest_url}"
   else
     err "curl (or wget) is required to query the latest release tag"
   fi
+  resolved_tag="${effective##*/}"
+  case "${resolved_tag}" in
+    v[0-9]*.[0-9]*.[0-9]*)
+      printf '%s\n' "${resolved_tag}"
+      ;;
+    *)
+      err "could not parse release tag from redirect URL: ${effective}"
+      ;;
+  esac
 }
 
 detect_target() {
@@ -140,10 +151,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+BASE_TRIMMED="${BASE_URL%/}"
+
 if [ -z "${VERSION}" ]; then
-  latest_json="$(fetch_text "${API_LATEST_URL}")" || err "failed to query ${API_LATEST_URL}"
-  VERSION="$(printf '%s\n' "${latest_json}" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
-  [ -n "${VERSION}" ] || err "could not parse tag_name from ${API_LATEST_URL}"
+  VERSION="$(resolve_latest_tag "${BASE_TRIMMED}")"
 fi
 
 case "${VERSION}" in
@@ -155,7 +166,6 @@ TARGET="$(detect_target)"
 STEM="chronicle-cli-${TAG}-${TARGET}"
 ARCHIVE="${STEM}.tar.gz"
 
-BASE_TRIMMED="${BASE_URL%/}"
 DOWNLOAD_PREFIX="${BASE_TRIMMED}/download/${TAG}"
 case "${BASE_TRIMMED}" in
   file://*)
