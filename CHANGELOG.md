@@ -5,6 +5,10 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md opens programme 24 and records
+  a clean deep mutation exercise: dispatch run
+  45933787610 at seed 70008, fifteen tests
+  passed at 100,000 cases (lane AO1).
 - docs/ROADMAP.md closes programme 23: the
   post-launch INVARIANTS traceability re-audit
   is landed at 041398b8 (PR #96), the matrix
