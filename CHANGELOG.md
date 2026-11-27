@@ -43,6 +43,11 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md records the programme 28
+  stranger proofs at 0.3.1: the release binary
+  and PyPI SDK match figure for figure, and the
+  SDK's Python decoders decode and convict on
+  their own (lane AS2).
 - docs/ROADMAP.md opens programme 28 and records
   the 0.3.1 release state: tag at d61cd88b,
   crates.io and PyPI at 0.3.1, GitHub Release
