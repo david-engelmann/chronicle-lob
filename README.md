@@ -72,13 +72,15 @@ Order books sit on the critical path of exchanges, matching simulators, risk gat
 | --- | --- | --- | --- |
 | [`chronicle-core`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-core/README.md) | library | none (`std` only) | Deterministic matching engine, 64-ary hierarchical bitmaps, SoA order arena, zero-allocation L2 and L3 book queries, and independent `ReferenceBook` differential oracle. |
 | [`chronicle-wal`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-wal/README.md) | library | none (`std` only) | Slicing-by-8 CRC32C write-ahead log, atomic snapshot codec with unconditional invariant checks, multi-cycle checkpointing, and bounded-memory streaming recovery. |
-| [`chronicle-lob-cli`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-cli/README.md) | library + binary (`chronicle-cli`) | `clap`, `serde_json` | Operator CLI and library for `verify`, `replay`, `snapshot`, `checkpoint`, and seeded synthetic `bench` runs. |
+| [`chronicle-lob-cli`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-cli/README.md) | library + binary (`chronicle-cli`) | `clap`, `serde_json` | Operator CLI and library for `verify`, `replay`, `snapshot`, `checkpoint`, seeded synthetic `bench` runs, and shell `completions`. |
 
 ## Quickstart
 
-Install the operator CLI from crates.io, with `cargo-binstall`, or from PyPI, or add `chronicle-core` and `chronicle-wal` to a Rust project.
+Install the precompiled operator CLI with the checksum-verifying installer, from crates.io, with `cargo-binstall`, or from PyPI, or add `chronicle-core` and `chronicle-wal` to a Rust project.
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/install.sh | sh
+# or install with Cargo
 cargo install chronicle-lob-cli
 # or install the CLI and Python SDK from PyPI
 pip install chronicle-lob
@@ -195,6 +197,7 @@ seed=0
 
 ```sh
 chronicle-cli bench --ops 100000 --seed 42 --json
+chronicle-cli completions <bash|zsh|fish|powershell>
 ```
 
 ## Verification and performance
