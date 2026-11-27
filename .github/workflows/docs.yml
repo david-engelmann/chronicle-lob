@@ -21,13 +21,23 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/mdbook-linkcheck
+            ~/.cargo/bin/mdbook-mermaid
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+          key: ${{ runner.os }}-mdbook-tools-0.7.7-0.14.1-${{ hashFiles('rust-toolchain.toml') }}
       - uses: peaceiris/actions-mdbook@ee69d230fe19748b7abf22df32acaa93833fad08 # v2.0.0
         with:
           mdbook-version: "0.4.40"
       - name: Install mdbook-linkcheck and mdbook-mermaid
-        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
-        with:
-          tool: mdbook-linkcheck,mdbook-mermaid
+        run: |
+          which mdbook-linkcheck || cargo install mdbook-linkcheck --locked --version 0.7.7
+          which mdbook-mermaid || cargo install mdbook-mermaid --locked --version 0.14.1
       - name: Stage docs into book/src/docs
         run: bash book/sync-docs.sh
       - name: Build site and run dead-link check
