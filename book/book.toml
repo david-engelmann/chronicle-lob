@@ -1,0 +1,26 @@
+[book]
+title = "chronicle-lob"
+authors = ["David Engelmann"]
+description = "Deterministic limit order book and matching engine in Rust with zero steady-state heap allocation, CRC32C write-ahead log, atomic snapshots, CLI, and Python SDK."
+language = "en"
+src = "src"
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[build]
+build-dir = "build"
+
+[output.html]
+default-theme = "ayu"
+git-repository-url = "https://github.com/david-engelmann/chronicle-lob"
+site-url = "/chronicle-lob/"
+additional-css = ["theme/brand.css"]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+
+# Dead-link gate: fail `mdbook build book` on broken internal links. Web links
+# are not fetched in CI to prevent network flakiness. Adding this second
+# renderer nests HTML output under `book/build/html/`.
+[output.linkcheck]
+follow-web-links = false
+warning-policy = "error"

@@ -1,11 +1,14 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Documentation
+  - name: Published Documentation
+    url: https://david-engelmann.github.io/chronicle-lob/
+    about: Read the published mdBook guide, quickstart, architecture, and FAQ
+  - name: Rust API Reference (docs.rs)
     url: https://docs.rs/chronicle-core
-    about: Read API documentation and crate guides on docs.rs
-  - name: Architecture and Invariants
-    url: https://github.com/david-engelmann/chronicle-lob/blob/main/docs/README.md
-    about: Inspect engine architecture, WAL wire format, and invariant contracts
+    about: Browse generated rustdoc API documentation for chronicle-core and chronicle-wal
+  - name: GitHub Discussions
+    url: https://github.com/david-engelmann/chronicle-lob/discussions
+    about: Ask questions, discuss order-book design, or share integration patterns
   - name: Security Advisories
     url: https://github.com/david-engelmann/chronicle-lob/security/advisories/new
     about: Privately report a security issue or untrusted-input decoder bug

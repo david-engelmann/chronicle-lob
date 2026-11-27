@@ -3,7 +3,7 @@
 # crate name is already taken. The installed binary retains the name
 # chronicle-cli so CLI invocations stay uniform across install methods.
 name = "chronicle-lob-cli"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 rust-version = "1.100"
 description = "Command line replay, verification, snapshot, and benchmark tool for chronicle books"
@@ -23,8 +23,8 @@ name = "chronicle-cli"
 path = "src/main.rs"
 
 [dependencies]
-chronicle-core = { version = "0.3.2", path = "../chronicle-core" }
-chronicle-wal = { version = "0.3.2", path = "../chronicle-wal" }
+chronicle-core = { version = "0.3.3", path = "../chronicle-core" }
+chronicle-wal = { version = "0.3.3", path = "../chronicle-wal" }
 clap = { version = "4", features = ["env"] }
 serde_json = "1"
 

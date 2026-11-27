@@ -72,6 +72,11 @@ jobs:
         run: >-
           cargo clippy --workspace --all-targets --all-features --locked --
           -D warnings
+      - name: cargo check --manifest-path fuzz/Cargo.toml --locked --bins
+        if: steps.ws.outputs.present == 'true'
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: cargo check --manifest-path fuzz/Cargo.toml --locked --bins
 
   test:
     name: test (PR volume, 1,000 cases)
@@ -419,6 +424,8 @@ jobs:
           diff -u crates/chronicle-wal/examples/wal_recovery.expected.txt /tmp/wal_recovery.out
           cargo build --locked -p chronicle-lob-cli --bin chronicle-cli
           python3 -m unittest discover -s python/tests -v
+          python3 examples/market_session_and_replay.py
+          sh examples/crash_recovery_drill.sh
 
   deny:
     name: cargo-deny (advisories, licenses, bans, sources)

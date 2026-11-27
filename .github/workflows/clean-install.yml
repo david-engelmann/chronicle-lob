@@ -1,0 +1,49 @@
+name: clean-install
+
+# Clean-machine installer gate: verifies on fresh Linux and macOS runners
+# (with no repository checkout and no Rust toolchain) that `install.sh`
+# downloads the published release archive, verifies SHA256SUMS, installs
+# `chronicle-cli` to `~/.local/bin`, and executes core CLI subcommands.
+
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional release tag to install (defaults to latest GitHub Release)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clean-install-${{ github.event.release.tag_name || inputs.version || 'latest' }}
+  cancel-in-progress: false
+
+jobs:
+  install-and-smoke:
+    name: clean install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      VERSION: ${{ github.event.release.tag_name || inputs.version }}
+    steps:
+      - name: Install chronicle-cli via install.sh (no checkout, no Rust toolchain)
+        shell: sh
+        run: curl -fsSL https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/install.sh | sh
+      - name: Verify installed binary version, deterministic bench JSON, and completions
+        shell: sh
+        run: |
+          set -eu
+          "$HOME/.local/bin/chronicle-cli" --version
+          "$HOME/.local/bin/chronicle-cli" bench --ops 1000 --seed 42 --json
+          "$HOME/.local/bin/chronicle-cli" completions bash >/dev/null

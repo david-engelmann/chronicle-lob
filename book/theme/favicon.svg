@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img">
+  <title>chronicle-lob</title>
+  <rect x="6" y="10" width="22" height="8" rx="2.5" fill="#c25e00"/>
+  <rect x="12" y="22" width="16" height="8" rx="2.5" fill="#c25e00" opacity="0.85"/>
+  <rect x="18" y="34" width="10" height="8" rx="2.5" fill="#f59e0b"/>
+  <rect x="8" y="46" width="20" height="8" rx="2.5" fill="#c25e00" opacity="0.85"/>
+  <rect x="31" y="6" width="2" height="52" rx="1" fill="#f59e0b"/>
+  <rect x="36" y="10" width="20" height="8" rx="2.5" fill="#c25e00" opacity="0.85"/>
+  <rect x="36" y="22" width="10" height="8" rx="2.5" fill="#f59e0b"/>
+  <rect x="36" y="34" width="16" height="8" rx="2.5" fill="#c25e00" opacity="0.85"/>
+  <rect x="36" y="46" width="22" height="8" rx="2.5" fill="#c25e00"/>
+</svg>
