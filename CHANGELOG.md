@@ -43,6 +43,11 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md opens programme 27 and records
+  the post-launch links audit: 15 files, 12
+  relative references resolve, zero broken,
+  external references confined to the project's
+  own domains (lane AR1).
 - docs/ROADMAP.md closes programme 26: the
   performance pass is landed at e4ccc745
   (PR #102).

@@ -1584,3 +1584,26 @@ symmetric with `WalBuilder`, root `README.md` uses canonical `raw.githubusercont
 and `github.com` URLs so PyPI and `crates.io` render every diagram and link
 cleanly, workflows pin `actions/checkout@v7.0.1`, and `verify-published.yml`
 automates the PyPI stranger-consumption check alongside the `crates.io` jobs.
+
+## Programme 27: the Z set (opened 2026-11-27)
+
+The post-launch links audit: programme 12's
+pre-launch pass repeated against the tree the
+launch and the 0.3.1 preparation produced.
+
+### Lane AR1: audit every reference in the docs
+
+Verdict: clean. Fifteen markdown files audited at
+d61cd88b. Twelve relative references resolve
+against the tree, zero broken. External references
+are confined to six expected domains, all the
+project's own surfaces: github.com (35),
+raw.githubusercontent.com (5), img.shields.io (4),
+crates.io (3), docs.rs (3), and pypi.org (1). The
+shape changed since programme 12, which read 14
+files, 41 relative references, and no external
+URLs: the 0.3.1 preparation reworked the README
+to absolute links into the repo and its raw
+content host, which is why the relative count
+fell and github.com rose. Nothing points anywhere
+unexpected. AR2 closes the programme.
