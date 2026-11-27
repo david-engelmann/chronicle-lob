@@ -5,6 +5,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md closes programme 25: the SDK
+  surface-parity audit is landed at 3242a990
+  (PR #100), parity holds.
 - docs/ROADMAP.md opens programme 25 and records
   the SDK surface-parity audit: five subcommands
   to five functions, five flags to five fields,
