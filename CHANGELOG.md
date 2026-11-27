@@ -5,6 +5,11 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md opens programme 23 and records
+  the post-launch INVARIANTS traceability
+  re-audit: 53 rows, 114 enforcement names, the
+  matrix sound with three names classified
+  (lane AN1).
 - docs/ROADMAP.md closes programme 22: the
   failure-side proofs are landed at 1036e3f7
   (PR #94).
