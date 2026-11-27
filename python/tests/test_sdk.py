@@ -24,7 +24,7 @@ def _repack_frame_crc(frame: bytearray) -> bytes:
 
 class ChronicleLobSdkTests(unittest.TestCase):
     def test_version_matches_package(self) -> None:
-        self.assertEqual(chronicle_lob.__version__, "0.3.2")
+        self.assertEqual(chronicle_lob.__version__, "0.3.3")
         self.assertEqual(chronicle_lob.version(), chronicle_lob.__version__)
 
     def test_completions_all_shells_and_invalid_shell(self) -> None:

@@ -1,6 +1,7 @@
 /target
 /dist
 /.venv
+.ruff_cache/
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -10,4 +11,5 @@ __pycache__/
 *.snapshot
 *.checkpoint
 *.tmp
+!fuzz/seeds/**
 proptest-regressions/

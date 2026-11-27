@@ -14,7 +14,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/README.md"><b>Docs</b></a> ·
+  <a href="https://david-engelmann.github.io/chronicle-lob/"><b>Docs</b></a> ·
+  <a href="https://github.com/david-engelmann/chronicle-lob/tree/main/examples">Examples</a> ·
   <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ARCHITECTURE.md">Architecture</a> ·
   <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md">Invariants</a> ·
   <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/PERFORMANCE.md">Performance</a> ·
@@ -220,12 +221,16 @@ Per [CHECK-DOC-1](https://github.com/david-engelmann/chronicle-lob/blob/main/doc
 
 | If you want to... | Read |
 | --- | --- |
-| Navigate every document in the repository | [Documentation index](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/README.md) |
+| Read the published book and quickstart guide | [Published docs](https://david-engelmann.github.io/chronicle-lob/) · [Quickstart](https://david-engelmann.github.io/chronicle-lob/quickstart.html) · [CLI and Python SDK](https://david-engelmann.github.io/chronicle-lob/cli-and-python.html) |
+| Run end-to-end Rust, Python SDK, and CLI crash-recovery scripts | [Runnable examples](https://github.com/david-engelmann/chronicle-lob/tree/main/examples) |
 | Understand the arena, bitmaps, WAL framing, and snapshot byte layout | [Architecture](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ARCHITECTURE.md) · [Decisions](https://github.com/david-engelmann/chronicle-lob/blob/main/DECISIONS.md) |
 | Audit every correctness, durability, and allocation invariant | [Invariants and traceability matrix](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md) |
 | Inspect recorded Criterion latency and throughput baselines | [Performance baseline](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/PERFORMANCE.md) |
-| Check crate APIs and operator subcommands | [chronicle-core](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-core/README.md) · [chronicle-wal](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-wal/README.md) · [chronicle-lob-cli](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-cli/README.md) |
-| Review security scope, threat model, and release history | [Security policy](https://github.com/david-engelmann/chronicle-lob/blob/main/SECURITY.md) · [Roadmap](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ROADMAP.md) · [Changelog](https://github.com/david-engelmann/chronicle-lob/blob/main/CHANGELOG.md) |
+| Compare against heap books, ring-buffer engines, and float backtesters | [How chronicle-lob compares](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/COMPARISON.md) |
+| Find answers on tick math, priority rules, and bounded-memory recovery | [FAQ](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/FAQ.md) |
+| Embed or drive chronicle-lob from an AI coding agent or harness | [Agent guide](https://github.com/david-engelmann/chronicle-lob/blob/main/AGENTS.md) |
+| Browse generated Rust API docs and crate guides | [docs.rs/chronicle-core](https://docs.rs/chronicle-core) · [docs.rs/chronicle-wal](https://docs.rs/chronicle-wal) · [docs.rs/chronicle-lob-cli](https://docs.rs/chronicle-lob-cli) |
+| Check releases, security policy, and repository index | [Releases](https://github.com/david-engelmann/chronicle-lob/releases) · [Changelog](https://github.com/david-engelmann/chronicle-lob/blob/main/CHANGELOG.md) · [Security policy](https://github.com/david-engelmann/chronicle-lob/blob/main/SECURITY.md) · [Docs index](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/README.md) |
 
 ## Contributing
 

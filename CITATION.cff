@@ -6,7 +6,7 @@ authors:
   - family-names: Engelmann
     given-names: David
     website: "https://github.com/david-engelmann"
-version: 0.3.2
+version: 0.3.3
 date-released: "2026-11-27"
 license: MIT OR Apache-2.0
 repository-code: "https://github.com/david-engelmann/chronicle-lob"

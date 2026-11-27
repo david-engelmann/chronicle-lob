@@ -1,0 +1,32 @@
+[package]
+name = "chronicle-lob-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+chronicle-core = { path = "../crates/chronicle-core" }
+chronicle-wal = { path = "../crates/chronicle-wal" }
+libfuzzer-sys = "0.4"
+
+# Standalone workspace so sanitizer/nightly fuzzing stays isolated from the
+# std-only workspace crates while still compiling cleanly on stable in CI.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "wal_recover"
+path = "fuzz_targets/wal_recover.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "snapshot_decode"
+path = "fuzz_targets/snapshot_decode.rs"
+test = false
+doc = false
+bench = false
