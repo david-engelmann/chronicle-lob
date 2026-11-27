@@ -44,7 +44,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             manylinux: auto
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
@@ -63,7 +63,7 @@ jobs:
     name: build source distribution
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
@@ -92,7 +92,7 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: actions/download-artifact@v8
         with:
           name: wheel-${{ matrix.target }}

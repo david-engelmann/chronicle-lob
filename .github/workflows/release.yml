@@ -48,7 +48,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             ext: ".exe"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Install pinned toolchain for target
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
@@ -101,7 +101,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Download release tarballs
         env:
           GH_TOKEN: ${{ github.token }}

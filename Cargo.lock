@@ -184,7 +184,7 @@ dependencies = [
 
 [[package]]
 name = "chronicle-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -192,7 +192,7 @@ dependencies = [
 
 [[package]]
 name = "chronicle-lob-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chronicle-core",
  "chronicle-wal",
@@ -202,7 +202,7 @@ dependencies = [
 
 [[package]]
 name = "chronicle-wal"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chronicle-core",
  "criterion",

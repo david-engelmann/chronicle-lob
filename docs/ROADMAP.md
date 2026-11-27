@@ -1571,3 +1571,16 @@ PERFORMANCE.md as the programme 26 section.
 Programme 26 is complete: AQ1 landed at e4ccc745
 (PR #102), and this closure record is AQ2. The Y
 set held one lane and it is closed.
+
+## Programme 27: 0.3.1 library target, Python binary decoders, and PyPI rendering (2026-11-27)
+
+Ships `0.3.1` across GitHub Releases, `crates.io`, `docs.rs`, and `PyPI`:
+`chronicle-lob-cli` gains `[lib]` (`crates/chronicle-cli/src/lib.rs`) under
+`#![forbid(unsafe_code)]` so `docs.rs/chronicle-lob-cli` builds full API
+documentation alongside `chronicle-core` and `chronicle-wal`, `chronicle_lob`
+gains pure-Python `CWAL` v1 and `CSNP` v1 binary decoders (`WalFrame`,
+`iter_wal_frames`, `read_wal_frames`, `SnapshotHeader`, `read_snapshot_header`)
+symmetric with `WalBuilder`, root `README.md` uses canonical `raw.githubusercontent.com`
+and `github.com` URLs so PyPI and `crates.io` render every diagram and link
+cleanly, workflows pin `actions/checkout@v7.0.1`, and `verify-published.yml`
+automates the PyPI stranger-consumption check alongside the `crates.io` jobs.
