@@ -1500,3 +1500,35 @@ AO1 outcome: the exercise record landed at
 Programme 24 is complete: AO1 landed at 0d9a4cd3
 (PR #98), and this closure record is AO2. The W
 set held one lane and it is closed.
+
+## Programme 25: the X set (opened 2026-11-27)
+
+The SDK surface-parity audit: the Python SDK's
+surface mapped against the CLI's, surface by
+surface, from the shipped 0.3.0 artifacts.
+
+### Lane AP1: map the SDK surface against the CLI
+
+Verdict: parity holds, no gaps. The CLI's five
+subcommands (replay, verify, snapshot, checkpoint,
+bench) map one to one onto the SDK's five
+functions. The five book-configuration flags
+(max-orders, grid-len, tick-size, grid-start-tick,
+default-stp) map one to one onto BookSpec's five
+fields, and the base-snapshot input matches the
+SDK's snapshot_path parameter on all four file
+commands. Every report type carries exactly the
+values its CLI output lines carry: BenchReport's
+eight fields are the bench lines, VerifyReport
+carries the snapshot and wal line values,
+SnapshotReport and CheckpointReport theirs,
+ReplayReport's events are the event lines in
+typed form. The SDK's extras are typed
+conveniences only (detail and exit_code on
+verify, out_path on snapshot and checkpoint).
+Two asymmetries, both by design: the SDK adds
+WalBuilder and crc32c, authoring primitives with
+no CLI counterpart since the CLI never writes
+logs, and the CLI's bench JSON flag has no SDK
+counterpart because the SDK returns the report
+object itself. AP2 closes the programme.
