@@ -1607,3 +1607,11 @@ to absolute links into the repo and its raw
 content host, which is why the relative count
 fell and github.com rose. Nothing points anywhere
 unexpected. AR2 closes the programme.
+
+AR1 outcome: the links audit record landed at
+6c86fc51 (PR #104). Every reference in the docs
+resolves or points at the project's own surfaces.
+
+Programme 27 is complete: AR1 landed at 6c86fc51
+(PR #104), and this closure record is AR2. The Z
+set held one lane and it is closed.

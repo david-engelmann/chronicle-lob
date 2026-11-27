@@ -43,6 +43,9 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md closes programme 27: the
+  post-launch links audit is landed at 6c86fc51
+  (PR #104), clean.
 - docs/ROADMAP.md opens programme 27 and records
   the post-launch links audit: 15 files, 12
   relative references resolve, zero broken,
