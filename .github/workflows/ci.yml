@@ -1,14 +1,7 @@
 name: CI
 
-# Gate layout for chronicle-lob. See docs/ARCHITECTURE.md section 9 and
-# CONTRIBUTING.md (Milestone 4) for the local equivalents.
-#
-# History: at Milestone 0 this repo contained no Cargo.toml and no Rust
-# sources yet, by design, and every cargo job first checked for the
-# workspace manifest and reported the skip plainly. Milestone 1 landed
-# the workspace, so the guards are inert and every gate runs at full
-# strength. The guards stay as harmless no-ops; they never weaken a
-# gate now that sources exist.
+# Continuous integration gate layout for chronicle-lob.
+# See docs/ARCHITECTURE.md section 9 and CONTRIBUTING.md for local equivalents.
 
 on:
   push:
@@ -121,11 +114,9 @@ jobs:
       PROPTEST_CASES: "10000"
     steps:
       - uses: actions/checkout@v7.0.1
-      # Programme 3 lane T3: the sweep seed rotates with the run
-      # number, so successive main runs explore new cases instead
-      # of re-proving one fixed stream forever. The test step
-      # echoes the seed in force, and any run reproduces locally
-      # with SIM_SEED set to the echoed value.
+      # Rotate the sweep seed with the GitHub Actions run number so successive
+      # main-branch builds explore fresh command streams while remaining
+      # reproducible locally via SIM_SEED.
       - name: Derive this run's seed
         run: echo "SIM_SEED=$(( ${{ github.run_number }} + 10000 ))" >> "$GITHUB_ENV"
       - name: Install pinned toolchain
@@ -162,8 +153,8 @@ jobs:
       PROPTEST_CASES: "10000"
     steps:
       - uses: actions/checkout@v7.0.1
-      # Lane T3 rotation, offset from the first sweep's stream so
-      # the two sweeps never run the same seed in the same run.
+      # Offset from the primary sweep stream so both sweeps explore distinct
+      # seeds within the same main-branch run.
       - name: Derive this run's seed
         run: echo "SIM_SEED=$(( ${{ github.run_number }} + 20000 ))" >> "$GITHUB_ENV"
       - name: Install pinned toolchain
@@ -186,9 +177,8 @@ jobs:
           if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
           else echo "present=false" >> "$GITHUB_OUTPUT";
           echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
-      # Roadmap lane R4 (docs/ROADMAP.md): main volume runs at two
-      # seeds, so an ambient-seed leak in a seeded test cannot hide
-      # behind the one seed the first sweep uses.
+      # Run main-branch property suites across two independent seeds so an
+      # ambient-seed leak cannot hide behind a single stream.
       - name: cargo test --workspace --locked (second seed sweep)
         if: steps.ws.outputs.present == 'true'
         run: |
@@ -271,9 +261,8 @@ jobs:
           echo "present=true" >> "$GITHUB_OUTPUT";
           else echo "present=false" >> "$GITHUB_OUTPUT";
           echo "No core crate yet (Milestone 0). Skipping."; fi
-      # Audit m4 (accepted at Milestone 1): assert on cargo's own
-      # metadata, not on a text parse of the manifest. A dependency
-      # counts unless cargo reports its kind as dev or build.
+      # Assert zero runtime dependencies using cargo metadata rather than text
+      # parsing; only dev and build dependencies are permitted.
       - name: Assert no non-dev dependencies in chronicle-core (cargo metadata)
         if: steps.ws.outputs.present == 'true'
         run: |
@@ -419,9 +408,8 @@ jobs:
           if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT";
           else echo "present=false" >> "$GITHUB_OUTPUT";
           echo "No Cargo.toml yet (Milestone 0). Skipping cargo gates."; fi
-      # Roadmap lane R2 (docs/ROADMAP.md): each example's full
-      # stdout is pinned by an expected file checked in beside it,
-      # so the examples are executable documentation with a gate.
+      # Each example's stdout is diffed against a checked-in expected file so
+      # runnable documentation stays verified on every change.
       - name: Run the examples and diff against their pinned output
         if: steps.ws.outputs.present == 'true'
         run: |
@@ -432,11 +420,23 @@ jobs:
           cargo build --locked -p chronicle-lob-cli --bin chronicle-cli
           python3 -m unittest discover -s python/tests -v
 
-  # Roadmap programme 2, lane S4 (docs/ROADMAP.md): the test and
-  # examples gates also run on macOS and Windows at PR volume, so
-  # the platform reach is proven on every change rather than
-  # assumed. The steps mirror the ubuntu jobs; the Windows legs run
-  # them under Git Bash so one script serves every platform.
+  deny:
+    name: cargo-deny (advisories, licenses, bans, sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with:
+          tool: cargo-deny
+      - name: cargo deny check
+        run: cargo deny check
+
+  # Cross-platform verification runs the test and example suites on macOS and
+  # Windows at pull-request volume under bash so behaviour is verified across
+  # all supported operating systems on every change.
   test-platforms:
     name: test (PR volume, macOS and Windows)
     strategy:

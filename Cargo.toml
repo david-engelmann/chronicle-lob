@@ -1,6 +1,4 @@
-# chronicle-lob workspace.
-# Members join per milestone: chronicle-core (M1), chronicle-wal (M3),
-# chronicle-cli (M4). See docs/ARCHITECTURE.md section 2.
+# chronicle-lob workspace (docs/ARCHITECTURE.md section 2).
 [workspace]
 resolver = "3"
 members = ["crates/chronicle-core", "crates/chronicle-wal", "crates/chronicle-cli"]
@@ -8,8 +6,7 @@ members = ["crates/chronicle-core", "crates/chronicle-wal", "crates/chronicle-cl
 # Lint posture: docs/ARCHITECTURE.md section 2.4. Crates opt in with
 # [lints] workspace = true in their own Cargo.toml.
 [workspace.lints.rust]
-# Raised from warn to deny by roadmap lane R3: an undocumented
-# public item now fails CI instead of accumulating.
+# Every public item must carry rustdoc comments; undocumented items fail CI.
 missing_docs = "deny"
 
 [workspace.lints.clippy]

@@ -1,10 +1,9 @@
 [package]
-# The package is chronicle-lob-cli because chronicle-cli is already
-# taken on crates.io (docs/ROADMAP.md, direction call DC-2). The
-# binary below keeps the name chronicle-cli, so installed usage does
-# not change.
+# Published on crates.io as chronicle-lob-cli because the chronicle-cli
+# crate name is already taken. The installed binary retains the name
+# chronicle-cli so CLI invocations stay uniform across install methods.
 name = "chronicle-lob-cli"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 rust-version = "1.100"
 description = "Command line replay, verification, snapshot, and benchmark tool for chronicle books"
@@ -24,8 +23,8 @@ name = "chronicle-cli"
 path = "src/main.rs"
 
 [dependencies]
-chronicle-core = { version = "0.3.1", path = "../chronicle-core" }
-chronicle-wal = { version = "0.3.1", path = "../chronicle-wal" }
+chronicle-core = { version = "0.3.2", path = "../chronicle-core" }
+chronicle-wal = { version = "0.3.2", path = "../chronicle-wal" }
 clap = { version = "4", features = ["env"] }
 serde_json = "1"
 

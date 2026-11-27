@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use Chronicle-LOB in your research or engineering work, please cite it using the metadata from this file."
+title: "Chronicle-LOB: Deterministic Limit Order Book and Write-Ahead Log"
+type: software
+authors:
+  - family-names: Engelmann
+    given-names: David
+    website: "https://github.com/david-engelmann"
+version: 0.3.2
+date-released: "2026-11-27"
+license: MIT OR Apache-2.0
+repository-code: "https://github.com/david-engelmann/chronicle-lob"
+url: "https://docs.rs/chronicle-core"
+keywords:
+  - limit-order-book
+  - matching-engine
+  - write-ahead-log
+  - deterministic
+  - rust
+abstract: "Single-threaded deterministic limit order book, matching engine, and CRC32C write-ahead log in Rust with zero steady-state heap allocation and bounded-memory crash recovery."

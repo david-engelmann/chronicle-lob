@@ -24,8 +24,31 @@ def _repack_frame_crc(frame: bytearray) -> bytes:
 
 class ChronicleLobSdkTests(unittest.TestCase):
     def test_version_matches_package(self) -> None:
-        self.assertEqual(chronicle_lob.__version__, "0.3.1")
+        self.assertEqual(chronicle_lob.__version__, "0.3.2")
         self.assertEqual(chronicle_lob.version(), chronicle_lob.__version__)
+
+    def test_completions_all_shells_and_invalid_shell(self) -> None:
+        default_script = chronicle_lob.completions()
+        self.assertIn("chronicle-cli", default_script)
+        for shell in ("bash", "zsh", "fish", "powershell", "pwsh"):
+            script = chronicle_lob.completions(shell)
+            self.assertIn("chronicle-cli", script)
+            for subcmd in (
+                "replay",
+                "verify",
+                "snapshot",
+                "checkpoint",
+                "bench",
+                "completions",
+            ):
+                self.assertIn(subcmd, script)
+        self.assertEqual(
+            chronicle_lob.completions("powershell"),
+            chronicle_lob.completions("pwsh"),
+        )
+        with self.assertRaises(chronicle_lob.ChronicleError) as ctx:
+            chronicle_lob.completions("tcsh")
+        self.assertEqual(ctx.exception.exit_code, 2)
 
     def test_crc32c_golden_vector(self) -> None:
         self.assertEqual(chronicle_lob.crc32c(b"123456789"), 0xE3069283)

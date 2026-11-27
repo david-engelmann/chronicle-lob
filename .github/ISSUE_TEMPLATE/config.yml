@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://docs.rs/chronicle-core
+    about: Read API documentation and crate guides on docs.rs
+  - name: Architecture and Invariants
+    url: https://github.com/david-engelmann/chronicle-lob/blob/main/docs/README.md
+    about: Inspect engine architecture, WAL wire format, and invariant contracts
+  - name: Security Advisories
+    url: https://github.com/david-engelmann/chronicle-lob/security/advisories/new
+    about: Privately report a security issue or untrusted-input decoder bug

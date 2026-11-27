@@ -3,10 +3,10 @@
 //!
 //! This crate powers the `chronicle-cli` executable and exposes its
 //! deterministic argument parser, subcommand routines ([`replay`],
-//! [`verify`], [`snapshot`], [`checkpoint`], and [`bench`](fn@bench)), summary
-//! structures, [`SplitMix64`] workload generator, and [`run_cli`] entry
-//! point so embedded callers, tests, and `docs.rs` builds share one
-//! verified implementation.
+//! [`verify`], [`snapshot`], [`checkpoint`], [`bench`](fn@bench), and
+//! [`write_completions`]), summary structures, [`SplitMix64`] workload
+//! generator, and [`run_cli`] entry point so embedded callers, tests, and
+//! `docs.rs` builds share one verified implementation.
 //!
 //! Output ordering is fully determined by the input files and `--seed`
 //! (or `SIM_SEED`), and `#![forbid(unsafe_code)]` holds across the crate.
@@ -32,6 +32,7 @@ use std::fs;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::str::FromStr;
 
 use chronicle_core::{
     Book, BookConfig, CancelReason, EventBuffer, ExecutionEvent, OrderId, OrderType, ParticipantId,
@@ -154,6 +155,302 @@ pub struct CheckpointSummary {
     pub archived_log: PathBuf,
 }
 
+/// Target shell for deterministic `chronicle-cli` completion script generation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Shell {
+    /// Bourne-again shell (`bash`).
+    Bash,
+    /// Z shell (`zsh`).
+    Zsh,
+    /// Friendly interactive shell (`fish`).
+    Fish,
+    /// `PowerShell` (`powershell` or `pwsh`).
+    PowerShell,
+}
+
+impl fmt::Display for Shell {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Bash => f.write_str("bash"),
+            Self::Zsh => f.write_str("zsh"),
+            Self::Fish => f.write_str("fish"),
+            Self::PowerShell => f.write_str("powershell"),
+        }
+    }
+}
+
+/// Error returned when parsing an unsupported shell name into [`Shell`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParseShellError(String);
+
+impl fmt::Display for ParseShellError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "unsupported shell '{}'; expected bash, zsh, fish, or powershell",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for ParseShellError {}
+
+impl FromStr for Shell {
+    type Err = ParseShellError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "bash" => Ok(Self::Bash),
+            "zsh" => Ok(Self::Zsh),
+            "fish" => Ok(Self::Fish),
+            "powershell" | "pwsh" => Ok(Self::PowerShell),
+            _ => Err(ParseShellError(s.to_string())),
+        }
+    }
+}
+
+const BASH_COMPLETIONS: &str = r#"_chronicle_cli() {
+    local cur prev subcmd
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    case "${prev}" in
+        --wal|--snapshot|--out)
+            COMPREPLY=( $(compgen -f -- "${cur}") )
+            return 0
+            ;;
+        --default-stp)
+            COMPREPLY=( $(compgen -W "cancel-incoming cancel-resting cancel-both" -- "${cur}") )
+            return 0
+            ;;
+        --seed|--ops|--max-orders|--grid-len|--tick-size|--grid-start-tick)
+            return 0
+            ;;
+    esac
+
+    subcmd=""
+    local i=1
+    while [[ ${i} -lt ${COMP_CWORD} ]]; do
+        case "${COMP_WORDS[i]}" in
+            replay|verify|snapshot|checkpoint|bench|completions)
+                subcmd="${COMP_WORDS[i]}"
+                break
+                ;;
+            --seed)
+                i=$((i + 2))
+                continue
+                ;;
+        esac
+        i=$((i + 1))
+    done
+
+    if [[ -z "${subcmd}" ]]; then
+        if [[ "${cur}" == -* ]]; then
+            COMPREPLY=( $(compgen -W "--seed --help -h --version -V" -- "${cur}") )
+        else
+            COMPREPLY=( $(compgen -W "replay verify snapshot checkpoint bench completions" -- "${cur}") )
+        fi
+        return 0
+    fi
+
+    case "${subcmd}" in
+        replay|verify)
+            COMPREPLY=( $(compgen -W "--wal --snapshot --max-orders --grid-len --tick-size --grid-start-tick --default-stp --seed --help -h" -- "${cur}") )
+            ;;
+        snapshot|checkpoint)
+            COMPREPLY=( $(compgen -W "--wal --snapshot --out --max-orders --grid-len --tick-size --grid-start-tick --default-stp --seed --help -h" -- "${cur}") )
+            ;;
+        bench)
+            COMPREPLY=( $(compgen -W "--ops --json --seed --help -h" -- "${cur}") )
+            ;;
+        completions)
+            if [[ "${cur}" == -* ]]; then
+                COMPREPLY=( $(compgen -W "--seed --help -h" -- "${cur}") )
+            else
+                COMPREPLY=( $(compgen -W "bash zsh fish powershell pwsh" -- "${cur}") )
+            fi
+            ;;
+    esac
+    return 0
+}
+
+complete -F _chronicle_cli chronicle-cli
+"#;
+
+const ZSH_COMPLETIONS: &str = r#"#compdef chronicle-cli
+
+_chronicle_cli() {
+    local line state
+
+    _arguments -C \
+        '--seed[Seed for seeded work; honours SIM_SEED]:seed:' \
+        '(-h --help)'{-h,--help}'[Print help]' \
+        '(-V --version)'{-V,--version}'[Print version]' \
+        '1:subcommand:((replay\:"Apply a write-ahead log and print the event stream" verify\:"Report the sequence and checksum health of a log and snapshot pair" snapshot\:"Write a snapshot from a write-ahead log and optional base snapshot" checkpoint\:"Write a verified snapshot and archive the log it covers" bench\:"Run a seeded synthetic load against a fresh book" completions\:"Write shell completion scripts to standard output"))' \
+        '*::arg:->args'
+
+    case "$state" in
+        args)
+            case "${line[1]}" in
+                replay|verify)
+                    _arguments \
+                        '--wal[Write-ahead log file]:wal:_files' \
+                        '--snapshot[Snapshot file supplying the base book and its configuration]:snapshot:_files' \
+                        '--max-orders[Arena capacity of the book]:max_orders:' \
+                        '--grid-len[Number of price ticks on the grid]:grid_len:' \
+                        '--tick-size[Quote units per tick]:tick_size:' \
+                        '--grid-start-tick[Tick value of the first grid level]:grid_start_tick:' \
+                        '--default-stp[Default self-trade prevention policy]:policy:(cancel-incoming cancel-resting cancel-both)' \
+                        '--seed[Seed for seeded work; honours SIM_SEED]:seed:' \
+                        '(-h --help)'{-h,--help}'[Print help]'
+                    ;;
+                snapshot|checkpoint)
+                    _arguments \
+                        '--wal[Write-ahead log file]:wal:_files' \
+                        '--snapshot[Snapshot file supplying the base book and its configuration]:snapshot:_files' \
+                        '--out[Snapshot file to write]:out:_files' \
+                        '--max-orders[Arena capacity of the book]:max_orders:' \
+                        '--grid-len[Number of price ticks on the grid]:grid_len:' \
+                        '--tick-size[Quote units per tick]:tick_size:' \
+                        '--grid-start-tick[Tick value of the first grid level]:grid_start_tick:' \
+                        '--default-stp[Default self-trade prevention policy]:policy:(cancel-incoming cancel-resting cancel-both)' \
+                        '--seed[Seed for seeded work; honours SIM_SEED]:seed:' \
+                        '(-h --help)'{-h,--help}'[Print help]'
+                    ;;
+                bench)
+                    _arguments \
+                        '--ops[Number of generated commands to apply]:ops:' \
+                        '--json[Print the summary as JSON]' \
+                        '--seed[Seed for seeded work; honours SIM_SEED]:seed:' \
+                        '(-h --help)'{-h,--help}'[Print help]'
+                    ;;
+                completions)
+                    _arguments \
+                        '--seed[Seed for seeded work; honours SIM_SEED]:seed:' \
+                        '(-h --help)'{-h,--help}'[Print help]' \
+                        '1:shell:(bash zsh fish powershell pwsh)'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_chronicle_cli "$@"
+"#;
+
+const FISH_COMPLETIONS: &str = r#"set -l __chronicle_subcommands replay verify snapshot checkpoint bench completions
+
+complete -c chronicle-cli -f
+complete -c chronicle-cli -l seed -r -d 'Seed for seeded work; honours SIM_SEED'
+complete -c chronicle-cli -s h -l help -d 'Print help'
+complete -c chronicle-cli -s V -l version -d 'Print version'
+
+complete -c chronicle-cli -n "not __fish_seen_subcommand_from $__chronicle_subcommands" -a replay -d 'Apply a write-ahead log and print the event stream'
+complete -c chronicle-cli -n "not __fish_seen_subcommand_from $__chronicle_subcommands" -a verify -d 'Report the sequence and checksum health of a log and snapshot pair'
+complete -c chronicle-cli -n "not __fish_seen_subcommand_from $__chronicle_subcommands" -a snapshot -d 'Write a snapshot from a write-ahead log and optional base snapshot'
+complete -c chronicle-cli -n "not __fish_seen_subcommand_from $__chronicle_subcommands" -a checkpoint -d 'Write a verified snapshot and archive the log it covers'
+complete -c chronicle-cli -n "not __fish_seen_subcommand_from $__chronicle_subcommands" -a bench -d 'Run a seeded synthetic load against a fresh book'
+complete -c chronicle-cli -n "not __fish_seen_subcommand_from $__chronicle_subcommands" -a completions -d 'Write shell completion scripts to standard output'
+
+for sub in replay verify snapshot checkpoint
+    complete -c chronicle-cli -n "__fish_seen_subcommand_from $sub" -l wal -r -F -d 'Write-ahead log file'
+    complete -c chronicle-cli -n "__fish_seen_subcommand_from $sub" -l snapshot -r -F -d 'Snapshot file supplying the base book and its configuration'
+    complete -c chronicle-cli -n "__fish_seen_subcommand_from $sub" -l max-orders -r -d 'Arena capacity of the book'
+    complete -c chronicle-cli -n "__fish_seen_subcommand_from $sub" -l grid-len -r -d 'Number of price ticks on the grid'
+    complete -c chronicle-cli -n "__fish_seen_subcommand_from $sub" -l tick-size -r -d 'Quote units per tick'
+    complete -c chronicle-cli -n "__fish_seen_subcommand_from $sub" -l grid-start-tick -r -d 'Tick value of the first grid level'
+    complete -c chronicle-cli -n "__fish_seen_subcommand_from $sub" -l default-stp -r -a 'cancel-incoming cancel-resting cancel-both' -d 'Default self-trade prevention policy'
+end
+
+for sub in snapshot checkpoint
+    complete -c chronicle-cli -n "__fish_seen_subcommand_from $sub" -l out -r -F -d 'Snapshot file to write'
+end
+
+complete -c chronicle-cli -n '__fish_seen_subcommand_from bench' -l ops -r -d 'Number of generated commands to apply'
+complete -c chronicle-cli -n '__fish_seen_subcommand_from bench' -l json -d 'Print the summary as JSON'
+
+complete -c chronicle-cli -n '__fish_seen_subcommand_from completions' -a 'bash zsh fish powershell pwsh' -d 'Target shell'
+"#;
+
+const POWERSHELL_COMPLETIONS: &str = r#"Register-ArgumentCompleter -Native -CommandName 'chronicle-cli' -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+
+    $tokens = $commandAst.CommandElements | ForEach-Object { $_.ToString() }
+    $prev = if ($tokens.Count -ge 2 -and $wordToComplete -ne '') {
+        $tokens[$tokens.Count - 2]
+    } elseif ($tokens.Count -ge 1 -and $wordToComplete -eq '') {
+        $tokens[$tokens.Count - 1]
+    } else {
+        ''
+    }
+
+    if ($prev -eq '--default-stp') {
+        @('cancel-incoming', 'cancel-resting', 'cancel-both') |
+            Where-Object { $_ -like "$wordToComplete*" } |
+            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+        return
+    }
+
+    $subcommands = @('replay', 'verify', 'snapshot', 'checkpoint', 'bench', 'completions')
+    $subcmd = $null
+    for ($i = 1; $i -lt $tokens.Count; $i++) {
+        if ($subcommands -contains $tokens[$i] -and $tokens[$i] -ne $wordToComplete) {
+            $subcmd = $tokens[$i]
+            break
+        }
+    }
+
+    $candidates = if ($null -eq $subcmd) {
+        if ($wordToComplete -like '-*') {
+            @('--seed', '--help', '-h', '--version', '-V')
+        } else {
+            $subcommands
+        }
+    } else {
+        switch ($subcmd) {
+            'replay' { @('--wal', '--snapshot', '--max-orders', '--grid-len', '--tick-size', '--grid-start-tick', '--default-stp', '--seed', '--help', '-h') }
+            'verify' { @('--wal', '--snapshot', '--max-orders', '--grid-len', '--tick-size', '--grid-start-tick', '--default-stp', '--seed', '--help', '-h') }
+            'snapshot' { @('--wal', '--snapshot', '--out', '--max-orders', '--grid-len', '--tick-size', '--grid-start-tick', '--default-stp', '--seed', '--help', '-h') }
+            'checkpoint' { @('--wal', '--snapshot', '--out', '--max-orders', '--grid-len', '--tick-size', '--grid-start-tick', '--default-stp', '--seed', '--help', '-h') }
+            'bench' { @('--ops', '--json', '--seed', '--help', '-h') }
+            'completions' {
+                if ($wordToComplete -like '-*') {
+                    @('--seed', '--help', '-h')
+                } else {
+                    @('bash', 'zsh', 'fish', 'powershell', 'pwsh')
+                }
+            }
+        }
+    }
+
+    $candidates |
+        Where-Object { $_ -like "$wordToComplete*" } |
+        ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterName', $_) }
+}
+"#;
+
+/// Return the static shell completion script for `shell`.
+#[must_use]
+pub const fn completions_script(shell: Shell) -> &'static str {
+    match shell {
+        Shell::Bash => BASH_COMPLETIONS,
+        Shell::Zsh => ZSH_COMPLETIONS,
+        Shell::Fish => FISH_COMPLETIONS,
+        Shell::PowerShell => POWERSHELL_COMPLETIONS,
+    }
+}
+
+/// Write the deterministic shell completion script for `shell` to `out`.
+///
+/// # Errors
+///
+/// Propagates any [`io::Error`] returned while writing or flushing `out`.
+pub fn write_completions<W: Write>(shell: Shell, out: &mut W) -> io::Result<()> {
+    out.write_all(completions_script(shell).as_bytes())?;
+    out.flush()
+}
+
 /// Build the `clap` argument parser for `chronicle-cli`.
 ///
 /// Every subcommand accepts `--seed`, which honours the `SIM_SEED`
@@ -220,6 +517,18 @@ pub fn parser() -> Command {
                         .long("json")
                         .action(clap::ArgAction::SetTrue)
                         .help("Print the summary as JSON"),
+                ),
+        )
+        .subcommand(
+            Command::new("completions")
+                .about("Write shell completion scripts to standard output")
+                .arg(
+                    Arg::new("shell")
+                        .value_name("SHELL")
+                        .required(true)
+                        .ignore_case(true)
+                        .value_parser(["bash", "zsh", "fish", "powershell", "pwsh"])
+                        .help("Target shell (bash, zsh, fish, powershell)"),
                 ),
         )
 }
@@ -952,6 +1261,24 @@ fn run_bench(sub: &ArgMatches) -> ExitCode {
     }
 }
 
+fn run_completions(sub: &ArgMatches) -> ExitCode {
+    let raw = sub
+        .get_one::<String>("shell")
+        .expect("the parser requires SHELL");
+    let Ok(shell) = raw.parse::<Shell>() else {
+        return fail(&format!(
+            "unsupported shell '{raw}'; expected bash, zsh, fish, or powershell"
+        ));
+    };
+    let stdout = io::stdout();
+    let mut out = BufWriter::new(stdout.lock());
+    match write_completions(shell, &mut out) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) if err.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
+        Err(err) => fail(&format!("cannot write completions: {err}")),
+    }
+}
+
 /// Parse `args` (including `argv[0]`) and execute the selected `chronicle-cli`
 /// subcommand, returning its process [`ExitCode`] without calling
 /// `std::process::exit`.
@@ -974,6 +1301,7 @@ where
         Some(("snapshot", sub)) => run_snapshot(sub),
         Some(("checkpoint", sub)) => run_checkpoint(sub),
         Some(("bench", sub)) => run_bench(sub),
+        Some(("completions", sub)) => run_completions(sub),
         _ => ExitCode::from(2),
     }
 }

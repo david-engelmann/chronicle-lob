@@ -894,3 +894,107 @@ fn replay_exits_cleanly_on_broken_pipe() {
     assert_eq!(output.stderr, b"");
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn completions_supports_all_shells_and_covers_parser_surface() {
+    use chronicle_lob_cli::{Shell, completions_script, parser, write_completions};
+
+    assert_eq!("bash".parse::<Shell>(), Ok(Shell::Bash));
+    assert_eq!("zsh".parse::<Shell>(), Ok(Shell::Zsh));
+    assert_eq!("fish".parse::<Shell>(), Ok(Shell::Fish));
+    assert_eq!("powershell".parse::<Shell>(), Ok(Shell::PowerShell));
+    assert_eq!("pwsh".parse::<Shell>(), Ok(Shell::PowerShell));
+    assert_eq!("PWSH".parse::<Shell>(), Ok(Shell::PowerShell));
+    assert!("tcsh".parse::<Shell>().is_err());
+
+    assert_eq!(Shell::Bash.to_string(), "bash");
+    assert_eq!(Shell::Zsh.to_string(), "zsh");
+    assert_eq!(Shell::Fish.to_string(), "fish");
+    assert_eq!(Shell::PowerShell.to_string(), "powershell");
+
+    let cmd = parser();
+    let subcommands: Vec<String> = cmd
+        .get_subcommands()
+        .map(|sub| sub.get_name().to_string())
+        .collect();
+    assert_eq!(
+        subcommands,
+        vec![
+            "replay",
+            "verify",
+            "snapshot",
+            "checkpoint",
+            "bench",
+            "completions"
+        ]
+    );
+
+    let mut long_flags: Vec<String> = cmd
+        .get_arguments()
+        .filter_map(|arg| arg.get_long().map(str::to_string))
+        .collect();
+    for sub in cmd.get_subcommands() {
+        for arg in sub.get_arguments() {
+            if let Some(long) = arg.get_long()
+                && !long_flags.iter().any(|existing| existing == long)
+            {
+                long_flags.push(long.to_string());
+            }
+        }
+    }
+    for builtin in ["help", "version"] {
+        if !long_flags.iter().any(|existing| existing == builtin) {
+            long_flags.push(builtin.to_string());
+        }
+    }
+
+    for (name, shell) in [
+        ("bash", Shell::Bash),
+        ("zsh", Shell::Zsh),
+        ("fish", Shell::Fish),
+        ("powershell", Shell::PowerShell),
+        ("pwsh", Shell::PowerShell),
+    ] {
+        let output = run_cli(&["completions", name]);
+        assert!(
+            output.status.success(),
+            "completions {name} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = stdout_of(&output);
+        assert_eq!(text, completions_script(shell));
+
+        let mut buf = Vec::new();
+        write_completions(shell, &mut buf).expect("write_completions");
+        assert_eq!(buf, output.stdout);
+
+        for sub in &subcommands {
+            assert!(
+                text.contains(sub.as_str()),
+                "{name} completions missing subcommand {sub}"
+            );
+        }
+        for flag in &long_flags {
+            let needle = if shell == Shell::Fish {
+                format!("-l {flag}")
+            } else {
+                format!("--{flag}")
+            };
+            assert!(
+                text.contains(&needle),
+                "{name} completions missing flag {needle}"
+            );
+        }
+    }
+}
+
+#[test]
+fn completions_rejects_invalid_or_missing_shell_with_exit_2() {
+    let invalid = run_cli(&["completions", "tcsh"]);
+    assert_eq!(invalid.status.code(), Some(2));
+    assert_eq!(invalid.stdout, b"");
+
+    let missing = run_cli(&["completions"]);
+    assert_eq!(missing.status.code(), Some(2));
+    assert_eq!(missing.stdout, b"");
+}
