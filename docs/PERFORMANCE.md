@@ -243,6 +243,31 @@ streaming recovery entry point beside the slice
 form, and the two stand within two percent of each
 other here.
 
+## Programme 26 pass of 2026-11-27 (lane AQ1)
+
+Measured on GitHub-hosted `ubuntu-latest` runners
+(bench dispatch run 45963423977 at commit
+8f17d9f4), criterion 0.8.2, slope point estimates.
+No core code changed between this pass and the
+programme 16 pass; the figures are recorded as
+measured under the current harness and are not a
+performance verdict against any earlier pass,
+since runner variance alone moves these numbers.
+
+| Benchmark | Measured |
+| --- | --- |
+| add (one resting add, batch of 1,000) | 44.02 ns per operation |
+| cancel (one resting order, batch of 1,000) | 24.08 ns per operation |
+| best_bid_ask | 11.80 ns per call |
+| amend (one resting order, batch of 1,000) | 25.49 ns per amend |
+| mass cancel (800 orders of one participant) | 75.14 ns per cancelled order (60.11 us per call) |
+| match sweep (60 levels, 600 makers) | 18.61 us per sweep |
+| depth (100 levels) | 394.68 ns per call |
+| wal append (one Add frame) | 41.98 ns per frame (1.5972 GiB/s) |
+| recovery (5,000 frames) | 402.74 us (852.47 MiB/s) |
+| recovery from reader (5,000 frames) | 435.40 us (788.52 MiB/s) |
+| snapshot round trip (about 903 KB encoded) | 1.87 ms (481.98 MiB/s) |
+
 ## Refreshing the baseline
 
 Dispatch the benchmarks workflow (.github/workflows/bench.yml)

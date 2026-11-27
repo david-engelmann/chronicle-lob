@@ -5,6 +5,11 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md opens programme 26 and records
+  a full performance pass in PERFORMANCE.md:
+  bench dispatch 45963423977 at 8f17d9f4, add
+  44.02 ns, recovery 402.74 us, no verdict
+  claimed across passes (lane AQ1).
 - docs/ROADMAP.md closes programme 25: the SDK
   surface-parity audit is landed at 3242a990
   (PR #100), parity holds.
