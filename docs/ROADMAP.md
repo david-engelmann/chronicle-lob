@@ -1463,3 +1463,13 @@ debug_assert_invariants under the code's own
 identifiers, the crossed-book assertion and the
 levels.count array the bitmap checker recomputes
 from. AN2 closes the programme.
+
+AN1 outcome: the traceability record landed at
+041398b8 (PR #96). The matrix is sound: 111 of
+114 enforcement names resolve verbatim and the
+three exceptions are classified with no
+enforcement missing.
+
+Programme 23 is complete: AN1 landed at 041398b8
+(PR #96), and this closure record is AN2. The V
+set held one lane and it is closed.
