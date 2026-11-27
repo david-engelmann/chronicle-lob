@@ -1492,3 +1492,11 @@ CRC-recomputing structural forms). No panic, no
 conviction. This is the eighth clean deep
 exercise and the second against the post-launch
 decoders. AO2 closes the programme.
+
+AO1 outcome: the exercise record landed at
+0d9a4cd3 (PR #98). Dispatch 45933787610 at seed
+70008 passed all fifteen tests at 100,000 cases.
+
+Programme 24 is complete: AO1 landed at 0d9a4cd3
+(PR #98), and this closure record is AO2. The W
+set held one lane and it is closed.

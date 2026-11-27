@@ -5,6 +5,9 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md closes programme 24: the clean
+  deep mutation exercise is landed at 0d9a4cd3
+  (PR #98).
 - docs/ROADMAP.md opens programme 24 and records
   a clean deep mutation exercise: dispatch run
   45933787610 at seed 70008, fifteen tests
