@@ -5,6 +5,11 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+- docs/ROADMAP.md opens programme 25 and records
+  the SDK surface-parity audit: five subcommands
+  to five functions, five flags to five fields,
+  parity holds with two by-design asymmetries
+  (lane AP1).
 - docs/ROADMAP.md closes programme 24: the clean
   deep mutation exercise is landed at 0d9a4cd3
   (PR #98).
