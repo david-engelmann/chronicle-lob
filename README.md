@@ -1,8 +1,8 @@
 <p align="center">
   <a href="https://github.com/david-engelmann/chronicle-lob">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/media/chronicle-lockup-dark.svg">
-      <img src="docs/media/chronicle-lockup-light.svg" alt="chronicle-lob" height="56">
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/chronicle-lockup-dark.svg">
+      <img src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/chronicle-lockup-light.svg" alt="chronicle-lob" height="56">
     </picture>
   </a>
 </p>
@@ -14,10 +14,10 @@
 </p>
 
 <p align="center">
-  <a href="docs/README.md"><b>Docs</b></a> ·
-  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
-  <a href="docs/INVARIANTS.md">Invariants</a> ·
-  <a href="docs/PERFORMANCE.md">Performance</a> ·
+  <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/README.md"><b>Docs</b></a> ·
+  <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md">Invariants</a> ·
+  <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/docs/PERFORMANCE.md">Performance</a> ·
   <a href="https://github.com/david-engelmann/chronicle-lob/releases">Releases</a>
 </p>
 
@@ -26,11 +26,11 @@
   <a href="https://crates.io/crates/chronicle-core"><img src="https://img.shields.io/crates/v/chronicle-core?color=c25e00&label=crates.io" alt="crates.io version"></a>
   <a href="https://pypi.org/project/chronicle-lob/"><img src="https://img.shields.io/pypi/v/chronicle-lob?color=c25e00&label=pypi" alt="PyPI version"></a>
   <a href="https://docs.rs/chronicle-core"><img src="https://img.shields.io/docsrs/chronicle-core" alt="docs.rs"></a>
-  <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue" alt="MIT or Apache-2.0 license"></a>
+  <a href="https://github.com/david-engelmann/chronicle-lob/blob/main/LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue" alt="MIT or Apache-2.0 license"></a>
 </p>
 
 <p align="center">
-  <img src="docs/media/money-shot.gif"
+  <img src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/money-shot.gif"
        alt="A two-part view with live order book depth and durability telemetry above and real terminal runs below, executing book_session, wal_recovery across a snapshot and checkpoint seam, and the 1,000,000-operation zero-allocation proof"
        width="900">
 </p>
@@ -50,8 +50,8 @@ Order books sit on the critical path of exchanges, matching simulators, risk gat
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/media/guarantees-dark.svg">
-    <img src="docs/media/guarantees-light.svg"
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/guarantees-dark.svg">
+    <img src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/guarantees-light.svg"
          alt="Four verified chronicle-lob guarantees covering zero steady-state allocations across one million operations, zero external crates in chronicle-core, 8 KiB bounded streaming recovery, and dual-seed 10,000-case differential property sweeps"
          width="860">
   </picture>
@@ -61,8 +61,8 @@ Order books sit on the critical path of exchanges, matching simulators, risk gat
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/media/how-it-works-dark.svg">
-    <img src="docs/media/how-it-works-light.svg"
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/how-it-works-dark.svg">
+    <img src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/how-it-works-light.svg"
          alt="Inbound add, amend, cancel, and query commands flow into chronicle-core with preflight validation, 64-ary bitmaps, a struct-of-arrays arena, open-addressed ID lookup, checked u128 arithmetic, and caller EventBuffer, backed by chronicle-wal CRC32C frames and snapshots, producing deterministic execution events, exact crash recovery, and CLI operations"
          width="860">
   </picture>
@@ -70,9 +70,9 @@ Order books sit on the critical path of exchanges, matching simulators, risk gat
 
 | Crate | Kind | External runtime deps | Role |
 | --- | --- | --- | --- |
-| [`chronicle-core`](crates/chronicle-core/README.md) | library | none (`std` only) | Deterministic matching engine, 64-ary hierarchical bitmaps, SoA order arena, zero-allocation L2 and L3 book queries, and independent `ReferenceBook` differential oracle. |
-| [`chronicle-wal`](crates/chronicle-wal/README.md) | library | none (`std` only) | Slicing-by-8 CRC32C write-ahead log, atomic snapshot codec with unconditional invariant checks, multi-cycle checkpointing, and bounded-memory streaming recovery. |
-| [`chronicle-lob-cli`](crates/chronicle-cli/README.md) | binary (`chronicle-cli`) | `clap`, `serde`, `serde_json` | Operator CLI for `verify`, `replay`, `snapshot`, `checkpoint`, and seeded synthetic `bench` runs. |
+| [`chronicle-core`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-core/README.md) | library | none (`std` only) | Deterministic matching engine, 64-ary hierarchical bitmaps, SoA order arena, zero-allocation L2 and L3 book queries, and independent `ReferenceBook` differential oracle. |
+| [`chronicle-wal`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-wal/README.md) | library | none (`std` only) | Slicing-by-8 CRC32C write-ahead log, atomic snapshot codec with unconditional invariant checks, multi-cycle checkpointing, and bounded-memory streaming recovery. |
+| [`chronicle-lob-cli`](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-cli/README.md) | library + binary (`chronicle-cli`) | `clap`, `serde_json` | Operator CLI and library for `verify`, `replay`, `snapshot`, `checkpoint`, and seeded synthetic `bench` runs. |
 
 ## Quickstart
 
@@ -94,6 +94,15 @@ chronicle-wal = "0.3"
 import chronicle_lob
 
 summary = chronicle_lob.bench(ops=100_000, seed=42)
+
+wal = chronicle_lob.WalBuilder()
+wal.add(order_id=1, participant=7, side="ask", price=100, qty=10)
+frames = chronicle_lob.read_wal_frames(wal.to_bytes())
+
+config = chronicle_lob.BookSpec(max_orders=64, grid_len=640, tick_size=1, grid_start_tick=1)
+wal.write("session.wal")
+chronicle_lob.snapshot("session.wal", "session.snap", config=config)
+header = chronicle_lob.read_snapshot_header("session.snap")
 ```
 
 ### Embedding the matching engine
@@ -153,7 +162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 The `wal_recovery` worked example writes a five-command trading session to a write-ahead log, saves a snapshot partway through, recovers the book from the snapshot and log tail, checkpoints the session onto a fresh log, and verifies recovery across the checkpoint seam.
 
 <p align="center">
-  <img src="docs/media/demo.gif"
+  <img src="https://raw.githubusercontent.com/david-engelmann/chronicle-lob/main/docs/media/demo.gif"
        alt="The wal_recovery example recovering a book from its write-ahead log and checkpointing it, with the recovered book matching the live book"
        width="820">
 </p>
@@ -202,23 +211,23 @@ cargo bench --workspace --locked -- --test
 
 Property tests run the production `Book` lockstep against an independent `BTreeMap` and `VecDeque` `ReferenceBook` and compare full event streams and book snapshots after every command. Pull requests run 1,000 cases per property and `main` runs two independent 10,000-case sweeps on rotating seeds. Dedicated counting-allocator proof targets verify zero steady-state heap allocations across one million mixed commands, and CRC-recomputing structural mutation suites exercise snapshot and WAL decoders against adversarial byte tampering.
 
-Per [CHECK-DOC-1](docs/INVARIANTS.md), measured Criterion baselines live exclusively in [docs/PERFORMANCE.md](docs/PERFORMANCE.md) alongside the exact benchmark name, book occupancy, commit hash, and runner class that produced them.
+Per [CHECK-DOC-1](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md), measured Criterion baselines live exclusively in [docs/PERFORMANCE.md](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/PERFORMANCE.md) alongside the exact benchmark name, book occupancy, commit hash, and runner class that produced them.
 
 ## Documentation
 
 | If you want to... | Read |
 | --- | --- |
-| Navigate every document in the repository | [Documentation index](docs/README.md) |
-| Understand the arena, bitmaps, WAL framing, and snapshot byte layout | [Architecture](docs/ARCHITECTURE.md) · [Decisions](DECISIONS.md) |
-| Audit every correctness, durability, and allocation invariant | [Invariants and traceability matrix](docs/INVARIANTS.md) |
-| Inspect recorded Criterion latency and throughput baselines | [Performance baseline](docs/PERFORMANCE.md) |
-| Check crate APIs and operator subcommands | [chronicle-core](crates/chronicle-core/README.md) · [chronicle-wal](crates/chronicle-wal/README.md) · [chronicle-lob-cli](crates/chronicle-cli/README.md) |
-| Review security scope, threat model, and release history | [Security policy](SECURITY.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md) |
+| Navigate every document in the repository | [Documentation index](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/README.md) |
+| Understand the arena, bitmaps, WAL framing, and snapshot byte layout | [Architecture](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ARCHITECTURE.md) · [Decisions](https://github.com/david-engelmann/chronicle-lob/blob/main/DECISIONS.md) |
+| Audit every correctness, durability, and allocation invariant | [Invariants and traceability matrix](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/INVARIANTS.md) |
+| Inspect recorded Criterion latency and throughput baselines | [Performance baseline](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/PERFORMANCE.md) |
+| Check crate APIs and operator subcommands | [chronicle-core](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-core/README.md) · [chronicle-wal](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-wal/README.md) · [chronicle-lob-cli](https://github.com/david-engelmann/chronicle-lob/blob/main/crates/chronicle-cli/README.md) |
+| Review security scope, threat model, and release history | [Security policy](https://github.com/david-engelmann/chronicle-lob/blob/main/SECURITY.md) · [Roadmap](https://github.com/david-engelmann/chronicle-lob/blob/main/docs/ROADMAP.md) · [Changelog](https://github.com/david-engelmann/chronicle-lob/blob/main/CHANGELOG.md) |
 
 ## Contributing
 
-[CONTRIBUTING.md](CONTRIBUTING.md) covers toolchain setup, determinism rules, contract-first testing, and the pull request gate.
+[CONTRIBUTING.md](https://github.com/david-engelmann/chronicle-lob/blob/main/CONTRIBUTING.md) covers toolchain setup, determinism rules, contract-first testing, and the pull request gate.
 
 ## License
 
-Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE) at your option.
+Licensed under either of [MIT](https://github.com/david-engelmann/chronicle-lob/blob/main/LICENSE-MIT) or [Apache-2.0](https://github.com/david-engelmann/chronicle-lob/blob/main/LICENSE-APACHE) at your option.

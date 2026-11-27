@@ -5,6 +5,44 @@ follows Keep a Changelog, and the project uses semantic versioning.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-27
+
+Patch release adding a `[lib]` target (`chronicle_lob_cli`) to `chronicle-lob-cli`
+for `docs.rs` documentation and embedded callers, pure-Python `CWAL` v1 and `CSNP` v1
+binary decoders symmetric with `WalBuilder` in `chronicle_lob`, canonical GitHub URLs
+in `README.md` for PyPI and crates.io rendering, and automated PyPI wheel smoke
+verification in `verify-published.yml`.
+
+### Added
+
+- Library target `[lib]` (`chronicle_lob_cli`, `crates/chronicle-cli/src/lib.rs`)
+  alongside `chronicle-cli` under `#![forbid(unsafe_code)]`, exposing `run_cli`,
+  `parser`, `replay`, `verify`, `snapshot`, `checkpoint`, `bench`, `write_event`,
+  `archive_path_for`, `bench_config`, `SplitMix64`, and typed command summaries
+  (`BenchSummary`, `VerifySummary`, `VerifyError`, `SnapshotSummary`,
+  `CheckpointSummary`) for `docs.rs` and embedded callers.
+- Pure-Python `CWAL` v1 and `CSNP` v1 binary decoders in `chronicle_lob`
+  (`WalFrame`, `iter_wal_frames`, `read_wal_frames`, `SnapshotHeader`, and
+  `read_snapshot_header`) verifying domain-separated Castagnoli CRC32C checksums,
+  header invariants, and strictly consecutive nonzero sequence numbers.
+- `install-pypi` job in `.github/workflows/verify-published.yml` exercising
+  `pip install chronicle-lob==0.3.1` across `bench`, `WalBuilder`,
+  `read_wal_frames`, `snapshot`, and `read_snapshot_header`.
+
+### Fixed
+
+- Root `README.md` image sources (`docs/media/...`) and repository links now use
+  canonical `raw.githubusercontent.com` and `github.com/.../blob/main/...` URLs so
+  PyPI `readme_renderer` and crates.io render every diagram, GIF, and documentation
+  link without stripping or 404ing relative paths.
+
+### Changed
+
+- Expanded the `README.md` Python quickstart to show `WalBuilder`,
+  `read_wal_frames`, `snapshot`, and `read_snapshot_header` alongside `bench`,
+  pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
+  updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
+
 - docs/ROADMAP.md closes programme 26: the
   performance pass is landed at e4ccc745
   (PR #102).

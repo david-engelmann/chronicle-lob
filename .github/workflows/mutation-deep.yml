@@ -31,7 +31,7 @@ jobs:
     name: mutation harness (deep volume, 100,000 cases)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       # Programme 3 lane T3: the seed rotates per dispatch. An
       # explicit seed input wins; otherwise the run number derives
       # one, so successive deep runs explore new mutation streams.

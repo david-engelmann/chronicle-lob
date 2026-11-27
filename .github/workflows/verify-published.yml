@@ -1,13 +1,13 @@
 name: verify-published
 
-# Proves the published 0.3.0 crates work the way a stranger
-# consumes them (docs/ROADMAP.md, direction call DC-1). Run by
-# manual dispatch after a release, and weekly on a schedule so a
-# toolchain or registry change that breaks stranger consumption
-# surfaces on its own (programme 4, lane U3). One job builds and
-# runs a scratch binary against the published chronicle-core and
-# chronicle-wal; the other installs the published
-# chronicle-lob-cli and runs its bench subcommand.
+# Proves the published 0.3.1 packages work the way a stranger
+# consumes them (docs/ROADMAP.md, direction calls DC-1 and DC-5).
+# Run by manual dispatch after a release, and weekly on a schedule
+# so a toolchain or registry change that breaks stranger consumption
+# surfaces on its own (programme 4, lane U3). Three jobs cover a
+# scratch Rust binary against chronicle-core and chronicle-wal,
+# cargo install of chronicle-lob-cli, and pip install of
+# chronicle-lob from PyPI.
 
 on:
   workflow_dispatch:
@@ -32,8 +32,8 @@ jobs:
         run: |
           cargo new scratch-consumer
           cd scratch-consumer
-          cargo add chronicle-core@0.3.0
-          cargo add chronicle-wal@0.3.0
+          cargo add chronicle-core@0.3.1
+          cargo add chronicle-wal@0.3.1
       - name: Write the smoke program
         run: |
           cat > scratch-consumer/src/main.rs <<'EOF'
@@ -108,8 +108,64 @@ jobs:
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Install chronicle-lob-cli from crates.io
-        run: cargo install chronicle-lob-cli --version 0.3.0 --root "$RUNNER_TEMP/chronicle-install"
+        run: cargo install chronicle-lob-cli --version 0.3.1 --root "$RUNNER_TEMP/chronicle-install"
       - name: Run the installed binary
         run: |
           "$RUNNER_TEMP/chronicle-install/bin/chronicle-cli" bench --ops 10000 --seed 1
           "$RUNNER_TEMP/chronicle-install/bin/chronicle-cli" bench --ops 10000 --seed 1 --json
+
+  install-pypi:
+    name: pip install of the published PyPI package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install chronicle-lob from PyPI in a clean virtual environment
+        run: |
+          python3 -m venv "$RUNNER_TEMP/chronicle-pypi-venv"
+          "$RUNNER_TEMP/chronicle-pypi-venv/bin/python" -m pip install chronicle-lob==0.3.1
+          "$RUNNER_TEMP/chronicle-pypi-venv/bin/chronicle-cli" --version
+      - name: Exercise SDK bench, WalBuilder, read_wal_frames, snapshot, and read_snapshot_header
+        run: |
+          "$RUNNER_TEMP/chronicle-pypi-venv/bin/python" - <<'PY'
+          from pathlib import Path
+          import tempfile
+          import chronicle_lob
+
+          assert chronicle_lob.__version__ == "0.3.1", chronicle_lob.__version__
+          assert chronicle_lob.version() == "0.3.1", chronicle_lob.version()
+
+          bench_report = chronicle_lob.bench(ops=10_000, seed=42)
+          assert bench_report.applied + bench_report.rejected == 10_000
+
+          builder = chronicle_lob.WalBuilder()
+          builder.add(order_id=1, participant=10, side="bid", price=100, qty=5)
+          builder.add(order_id=2, participant=20, side="ask", price=105, qty=4)
+          builder.amend(order_id=1, new_price=101, new_qty=6)
+          builder.cancel(order_id=2)
+
+          frames = chronicle_lob.read_wal_frames(builder.to_bytes())
+          assert [f.command_type for f in frames] == ["add", "add", "amend", "cancel"]
+          assert [f.sequence for f in frames] == [1, 2, 3, 4]
+
+          config = chronicle_lob.BookSpec(
+              max_orders=64,
+              grid_len=640,
+              tick_size=1,
+              grid_start_tick=1,
+          )
+          with tempfile.TemporaryDirectory() as tmp:
+              tmp_dir = Path(tmp)
+              wal_path = builder.write(tmp_dir / "session.wal")
+              snap_path = tmp_dir / "session.snap"
+              snap_report = chronicle_lob.snapshot(wal_path, snap_path, config=config)
+              assert snap_report.last_included_seq == 4
+              assert snap_report.live_orders == 1
+
+              header = chronicle_lob.read_snapshot_header(snap_path)
+              assert header.version == 1
+              assert header.last_included_seq == 4
+              assert header.next_seq == 5
+              assert header.live_order_count == 1
+              assert header.config == config
+
+          print("pypi consumer ok:", chronicle_lob.__version__)
+          PY

@@ -1,7 +1,8 @@
-"""Typed Python SDK, CWAL binary encoder, and CLI wrapper for ``chronicle-lob``."""
+"""Typed Python SDK, CWAL/CSNP binary codecs, and CLI wrapper for ``chronicle-lob``."""
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 import json
 import os
@@ -11,7 +12,6 @@ import struct
 import subprocess
 import sys
 import sysconfig
-from typing import Sequence
 
 __all__ = [
     "__version__",
@@ -21,25 +21,38 @@ __all__ = [
     "ChronicleError",
     "ReplayEvent",
     "ReplayReport",
+    "SnapshotHeader",
     "SnapshotReport",
     "VerifyReport",
     "WalBuilder",
+    "WalFrame",
     "bench",
     "checkpoint",
     "crc32c",
     "find_binary",
+    "iter_wal_frames",
+    "read_snapshot_header",
+    "read_wal_frames",
     "replay",
     "snapshot",
     "verify",
     "version",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 PathInput = str | os.PathLike[str]
 
 _WAL_DOMAIN = b"chronicle-wal/v1\x00"
+_SNAPSHOT_DOMAIN = b"chronicle-snapshot/v1\x00"
 _MAGIC = b"CWAL"
+_SNAPSHOT_MAGIC = b"CSNP"
+_WAL_HEADER_LEN = 32
+_WAL_MAX_PAYLOAD_LEN = 4096
+_SNAPSHOT_HEADER_LEN = 64
+_SNAPSHOT_TRAILER_LEN = 4
+_U64_MAX = 0xFFFF_FFFF_FFFF_FFFF
+_U32_NIL = 0xFFFF_FFFF
 _POLYNOMIAL = 0x82F63B78
 
 
@@ -56,7 +69,9 @@ def _build_crc32c_table() -> tuple[int, ...]:
 _CRC32C_TABLE = _build_crc32c_table()
 
 _SIDE_BYTES = {"bid": 0, "ask": 1}
+_BYTE_TO_SIDE = {0: "bid", 1: "ask"}
 _ORDER_TYPE_BYTES = {"limit": 0, "ioc": 1, "fok": 2, "post-only": 3, "post_only": 3}
+_BYTE_TO_ORDER_TYPE = {0: "limit", 1: "ioc", 2: "fok", 3: "post-only"}
 _STP_BYTES = {
     None: 255,
     "cancel-incoming": 0,
@@ -65,6 +80,17 @@ _STP_BYTES = {
     "cancel_resting": 1,
     "cancel-both": 2,
     "cancel_both": 2,
+}
+_BYTE_TO_STP = {
+    0: "cancel-incoming",
+    1: "cancel-resting",
+    2: "cancel-both",
+}
+_KIND_SPECS: dict[int, tuple[str, int]] = {
+    1: ("add", 40),
+    2: ("cancel", 16),
+    3: ("mass-cancel", 16),
+    4: ("amend", 32),
 }
 
 
@@ -86,8 +112,27 @@ def _frame_crc(header_prefix: bytes, payload: bytes) -> int:
     return (~crc) & 0xFFFFFFFF
 
 
+def _snapshot_crc(preceding: bytes | memoryview) -> int:
+    crc = 0xFFFFFFFF
+    table = _CRC32C_TABLE
+    for chunk in (_SNAPSHOT_DOMAIN, preceding):
+        for byte in chunk:
+            crc = table[(crc ^ byte) & 0xFF] ^ (crc >> 8)
+    return (~crc) & 0xFFFFFFFF
+
+
+def _read_source_bytes(source: PathInput | bytes) -> bytes:
+    if isinstance(source, (bytes, bytearray, memoryview)):
+        return bytes(source)
+    target = Path(source)
+    try:
+        return target.read_bytes()
+    except OSError as exc:
+        raise ChronicleError(f"cannot read {target}: {exc}", exit_code=2) from exc
+
+
 class ChronicleError(RuntimeError):
-    """Raised when ``chronicle-cli`` reports corruption or invalid arguments."""
+    """Raised when ``chronicle-cli`` or binary decoders report corruption or invalid inputs."""
 
     def __init__(self, message: str, *, exit_code: int = 2) -> None:
         super().__init__(message)
@@ -118,6 +163,36 @@ class BookSpec:
             "--default-stp",
             self.default_stp,
         ]
+
+
+@dataclass(frozen=True, slots=True)
+class WalFrame:
+    """One decoded and CRC-verified ``CWAL`` v1 command frame."""
+
+    sequence: int
+    command_type: str
+    order_id: int | None
+    participant: int | None
+    side: str | None
+    order_type: str | None
+    stp: str | None
+    price: int | None
+    qty: int | None
+    payload: bytes
+    crc32c: int
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotHeader:
+    """Validated ``CSNP`` v1 snapshot header and verified trailing checksum."""
+
+    version: int
+    last_included_seq: int
+    next_seq: int
+    live_order_count: int
+    config: BookSpec
+    byte_len: int
+    crc32c: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,6 +359,378 @@ class WalBuilder:
         target = Path(path)
         target.write_bytes(self._buffer)
         return target
+
+
+def _decode_wal_payload(
+    kind: int,
+    command_type: str,
+    payload: bytes,
+    seq: int,
+    stored_crc: int,
+    offset: int,
+) -> WalFrame:
+    if kind == 1:
+        if payload[15] != 0:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: nonzero add.reserved byte",
+                exit_code=1,
+            )
+        if payload[32:40] != b"\x00" * 8:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: nonzero add.reserved_tail bytes",
+                exit_code=1,
+            )
+        order_id, participant, side_b, type_b, stp_b = struct.unpack_from(
+            "<QIBBB", payload, 0
+        )
+        price, qty = struct.unpack_from("<QQ", payload, 16)
+        side = _BYTE_TO_SIDE.get(side_b)
+        if side is None:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: invalid add.side byte {side_b}",
+                exit_code=1,
+            )
+        order_type = _BYTE_TO_ORDER_TYPE.get(type_b)
+        if order_type is None:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: invalid add.order_type byte {type_b}",
+                exit_code=1,
+            )
+        if stp_b == 255:
+            stp: str | None = None
+        else:
+            stp = _BYTE_TO_STP.get(stp_b)
+            if stp is None:
+                raise ChronicleError(
+                    f"corrupt WAL frame at offset {offset}: invalid add.stp byte {stp_b}",
+                    exit_code=1,
+                )
+        return WalFrame(
+            sequence=seq,
+            command_type=command_type,
+            order_id=order_id,
+            participant=participant,
+            side=side,
+            order_type=order_type,
+            stp=stp,
+            price=price,
+            qty=qty,
+            payload=payload,
+            crc32c=stored_crc,
+        )
+    if kind == 2:
+        if payload[8:16] != b"\x00" * 8:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: nonzero cancel.reserved bytes",
+                exit_code=1,
+            )
+        (order_id,) = struct.unpack_from("<Q", payload, 0)
+        return WalFrame(
+            sequence=seq,
+            command_type=command_type,
+            order_id=order_id,
+            participant=None,
+            side=None,
+            order_type=None,
+            stp=None,
+            price=None,
+            qty=None,
+            payload=payload,
+            crc32c=stored_crc,
+        )
+    if kind == 3:
+        if payload[4:16] != b"\x00" * 12:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: nonzero cancel_by_participant.reserved bytes",
+                exit_code=1,
+            )
+        (participant,) = struct.unpack_from("<I", payload, 0)
+        return WalFrame(
+            sequence=seq,
+            command_type=command_type,
+            order_id=None,
+            participant=participant,
+            side=None,
+            order_type=None,
+            stp=None,
+            price=None,
+            qty=None,
+            payload=payload,
+            crc32c=stored_crc,
+        )
+    if payload[24:32] != b"\x00" * 8:
+        raise ChronicleError(
+            f"corrupt WAL frame at offset {offset}: nonzero amend.reserved bytes",
+            exit_code=1,
+        )
+    order_id, new_price, new_qty = struct.unpack_from("<QQQ", payload, 0)
+    return WalFrame(
+        sequence=seq,
+        command_type=command_type,
+        order_id=order_id,
+        participant=None,
+        side=None,
+        order_type=None,
+        stp=None,
+        price=new_price,
+        qty=new_qty,
+        payload=payload,
+        crc32c=stored_crc,
+    )
+
+
+def _iter_wal_frames_from_bytes(data: bytes) -> Iterator[WalFrame]:
+    total_len = len(data)
+    offset = 0
+    expected_seq: int | None = None
+
+    while offset < total_len:
+        rem = total_len - offset
+        if rem < 4:
+            prefix = data[offset : offset + rem]
+            if prefix != _MAGIC[:rem]:
+                raise ChronicleError(
+                    f"corrupt WAL frame at offset {offset}: bad magic {prefix!r}",
+                    exit_code=1,
+                )
+            raise ChronicleError(
+                f"truncated WAL header at offset {offset}: expected 32 bytes, found {rem}",
+                exit_code=1,
+            )
+        magic = data[offset : offset + 4]
+        if magic != _MAGIC:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: bad magic {magic!r}",
+                exit_code=1,
+            )
+        if rem >= 6:
+            (version_preview,) = struct.unpack_from("<H", data, offset + 4)
+            if version_preview != 1:
+                raise ChronicleError(
+                    f"corrupt WAL frame at offset {offset}: unsupported version {version_preview}",
+                    exit_code=1,
+                )
+        elif rem == 5 and data[offset + 4] != 1:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: unsupported version {data[offset + 4]}",
+                exit_code=1,
+            )
+        if rem < _WAL_HEADER_LEN:
+            raise ChronicleError(
+                f"truncated WAL header at offset {offset}: expected 32 bytes, found {rem}",
+                exit_code=1,
+            )
+
+        (
+            _magic,
+            version,
+            header_len,
+            seq,
+            payload_len,
+            kind,
+            reserved_bytes,
+            stored_crc,
+        ) = struct.unpack_from("<4sHHQIB7sI", data, offset)
+
+        if version != 1:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: unsupported version {version}",
+                exit_code=1,
+            )
+        if header_len != _WAL_HEADER_LEN:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: bad header_len {header_len}",
+                exit_code=1,
+            )
+        if seq == 0:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: zero sequence number",
+                exit_code=1,
+            )
+        if payload_len > _WAL_MAX_PAYLOAD_LEN:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: payload_len {payload_len} exceeds {_WAL_MAX_PAYLOAD_LEN}",
+                exit_code=1,
+            )
+        spec = _KIND_SPECS.get(kind)
+        if spec is None:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: unknown command tag {kind}",
+                exit_code=1,
+            )
+        command_type, expected_payload_len = spec
+        if payload_len != expected_payload_len:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: payload_len {payload_len} != {expected_payload_len} for {command_type}",
+                exit_code=1,
+            )
+        if reserved_bytes != b"\x00" * 7:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: nonzero header reserved bytes",
+                exit_code=1,
+            )
+
+        frame_len = _WAL_HEADER_LEN + payload_len
+        if rem < frame_len:
+            raise ChronicleError(
+                f"truncated WAL payload at offset {offset}: expected {frame_len} bytes, found {rem}",
+                exit_code=1,
+            )
+
+        header_prefix = data[offset : offset + 28]
+        payload = data[offset + _WAL_HEADER_LEN : offset + frame_len]
+        computed_crc = _frame_crc(header_prefix, payload)
+        if computed_crc != stored_crc:
+            raise ChronicleError(
+                f"corrupt WAL frame at offset {offset}: CRC32C mismatch (expected 0x{computed_crc:08x}, found 0x{stored_crc:08x})",
+                exit_code=1,
+            )
+
+        frame = _decode_wal_payload(
+            kind, command_type, payload, seq, stored_crc, offset
+        )
+        if expected_seq is not None and seq != expected_seq:
+            raise ChronicleError(
+                f"WAL sequence gap at offset {offset}: expected {expected_seq}, found {seq}",
+                exit_code=1,
+            )
+        expected_seq = seq + 1
+        yield frame
+        offset += frame_len
+
+
+def iter_wal_frames(source: PathInput | bytes) -> Iterator[WalFrame]:
+    """Decode and CRC-verify ``CWAL`` v1 frames from ``source`` lazily."""
+    data = _read_source_bytes(source)
+    return _iter_wal_frames_from_bytes(data)
+
+
+def read_wal_frames(source: PathInput | bytes) -> tuple[WalFrame, ...]:
+    """Decode and CRC-verify all ``CWAL`` v1 frames from ``source``."""
+    return tuple(iter_wal_frames(source))
+
+
+def read_snapshot_header(source: PathInput | bytes) -> SnapshotHeader:
+    """Validate a ``CSNP`` v1 snapshot header and verify its trailing CRC32C."""
+    data = _read_source_bytes(source)
+    actual_len = len(data)
+    min_len = _SNAPSHOT_HEADER_LEN + _SNAPSHOT_TRAILER_LEN
+    if actual_len == 0:
+        raise ChronicleError(
+            f"truncated snapshot: expected at least {min_len} bytes, found 0",
+            exit_code=1,
+        )
+    prefix = data[: min(actual_len, 4)]
+    if prefix != _SNAPSHOT_MAGIC[: len(prefix)]:
+        raise ChronicleError(
+            f"corrupt snapshot: bad magic {prefix!r}",
+            exit_code=1,
+        )
+    if actual_len < min_len:
+        raise ChronicleError(
+            f"truncated snapshot: expected at least {min_len} bytes, found {actual_len}",
+            exit_code=1,
+        )
+
+    (
+        magic,
+        version,
+        header_len,
+        last_included_seq,
+        next_seq,
+        live_order_count,
+        max_orders,
+        tick_size,
+        grid_start_tick,
+        grid_len,
+        default_stp_raw,
+        free_list_head,
+        reserved,
+    ) = struct.unpack_from("<4sHHQQIIQQIIII", data, 0)
+
+    if magic != _SNAPSHOT_MAGIC:
+        raise ChronicleError(f"corrupt snapshot: bad magic {magic!r}", exit_code=1)
+    if version != 1:
+        raise ChronicleError(
+            f"corrupt snapshot: unsupported version {version}", exit_code=1
+        )
+    if header_len != _SNAPSHOT_HEADER_LEN:
+        raise ChronicleError(
+            f"corrupt snapshot: bad header_len {header_len}", exit_code=1
+        )
+
+    expected_len = (
+        68 + 8 * max_orders + 20 * grid_len + 56 * live_order_count
+    )
+    if actual_len != expected_len:
+        raise ChronicleError(
+            f"corrupt snapshot: byte length mismatch (expected {expected_len}, found {actual_len})",
+            exit_code=1,
+        )
+    if last_included_seq + 1 != next_seq:
+        raise ChronicleError(
+            f"corrupt snapshot: next_seq {next_seq} != last_included_seq + 1 ({last_included_seq + 1})",
+            exit_code=1,
+        )
+    if reserved != 0:
+        raise ChronicleError(
+            "corrupt snapshot: nonzero header.reserved field", exit_code=1
+        )
+    default_stp = _BYTE_TO_STP.get(default_stp_raw)
+    if default_stp is None:
+        raise ChronicleError(
+            f"corrupt snapshot: invalid default_stp {default_stp_raw}", exit_code=1
+        )
+    if max_orders < 1 or max_orders > (1 << 31) - 2:
+        raise ChronicleError(
+            f"corrupt snapshot: invalid max_orders {max_orders}", exit_code=1
+        )
+    if grid_len < 64 or grid_len % 64 != 0 or grid_len > (1 << 22):
+        raise ChronicleError(
+            f"corrupt snapshot: invalid grid_len {grid_len}", exit_code=1
+        )
+    if tick_size < 1:
+        raise ChronicleError(
+            f"corrupt snapshot: invalid tick_size {tick_size}", exit_code=1
+        )
+    grid_end_tick = grid_start_tick + grid_len
+    if grid_end_tick > _U64_MAX or (grid_end_tick - 1) * tick_size > _U64_MAX:
+        raise ChronicleError(
+            "corrupt snapshot: grid price range overflows u64", exit_code=1
+        )
+    if live_order_count > max_orders:
+        raise ChronicleError(
+            f"corrupt snapshot: live_order_count {live_order_count} exceeds max_orders {max_orders}",
+            exit_code=1,
+        )
+    if free_list_head != _U32_NIL and free_list_head >= max_orders:
+        raise ChronicleError(
+            f"corrupt snapshot: invalid free_list_head {free_list_head}", exit_code=1
+        )
+
+    (stored_crc,) = struct.unpack_from("<I", data, actual_len - _SNAPSHOT_TRAILER_LEN)
+    computed_crc = _snapshot_crc(memoryview(data)[: actual_len - _SNAPSHOT_TRAILER_LEN])
+    if computed_crc != stored_crc:
+        raise ChronicleError(
+            f"corrupt snapshot: CRC32C mismatch (expected 0x{computed_crc:08x}, found 0x{stored_crc:08x})",
+            exit_code=1,
+        )
+
+    return SnapshotHeader(
+        version=version,
+        last_included_seq=last_included_seq,
+        next_seq=next_seq,
+        live_order_count=live_order_count,
+        config=BookSpec(
+            max_orders=max_orders,
+            grid_len=grid_len,
+            tick_size=tick_size,
+            grid_start_tick=grid_start_tick,
+            default_stp=default_stp,
+        ),
+        byte_len=actual_len,
+        crc32c=stored_crc,
+    )
 
 
 def find_binary(binary: PathInput | None = None) -> Path:

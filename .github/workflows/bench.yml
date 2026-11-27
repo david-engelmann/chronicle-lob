@@ -20,7 +20,7 @@ jobs:
     name: criterion benchmarks (full measurement)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Cache cargo registry and target
