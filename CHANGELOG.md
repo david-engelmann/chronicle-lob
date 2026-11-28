@@ -43,6 +43,10 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md opens programme 34 and records
+  the 0.3.3 stranger proof: binary and SDK match
+  figure for figure, and the completions surface
+  proves out on both channels (lane AY1).
 - docs/ROADMAP.md closes programme 33: the
   INVARIANTS re-audit is landed at 414efc11
   (PR #121), the matrix sound.

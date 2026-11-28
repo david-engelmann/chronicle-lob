@@ -1833,3 +1833,34 @@ the post-wave tree.
 Programme 33 is complete: AX1 landed at 414efc11
 (PR #121), and this closure record is AX2. The AX
 set held one lane and it is closed.
+
+## Programme 34: the AY set (opened 2026-11-28)
+
+The stranger proof at the current release: the
+0.3.3 artifacts exercised end to end, completions
+included.
+
+### Lane AY1: prove 0.3.3 as a stranger finds it
+
+All proofs pass. The x86_64 Linux tarball
+downloaded at exactly its listed size (519,151
+bytes); the binary reports chronicle-cli 0.3.3,
+its bench at 10,000 ops under seed 1 matches the
+pinned contract figure for figure in text and
+JSON, it verifies the interop log ok, and it
+convicts the flipped log at offset 144 with the
+identical checksum detail, exit 1. The PyPI SDK
+in a clean venv reports 0.3.3, its bench matches,
+the crc32c check value holds, its decoder reads
+the interop frames field for field, and its
+verify convicts the flipped log with the same
+detail. The surface the 0.3.2 wave added proves
+out on both channels: the CLI carries a sixth
+subcommand, completions, and the SDK's
+completions function returns the generated
+scripts for bash, zsh, fish, and powershell, the
+bash script matching the binary's own output at
+2,137 bytes. One observation: programme 25's
+five-subcommand parity statement describes
+0.3.0; at 0.3.3 the completions pair matches
+one-to-one itself. AY2 closes the programme.
