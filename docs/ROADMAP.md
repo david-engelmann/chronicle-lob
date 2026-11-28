@@ -1769,3 +1769,26 @@ record.
 Programme 31 is complete: AV1 landed at 34bf45f2
 (PR #117), and this closure record is AV2. The AV
 set held one lane and it is closed.
+
+## Programme 32: the AW set (opened 2026-11-27)
+
+The PERFORMANCE refresh: the baseline re-measured
+at the tree the release waves left.
+
+### Lane AW1: refresh the baseline
+
+Bench dispatch run 46105905131 at 4f677eed
+completed success; figures are recorded in
+PERFORMANCE.md as the programme 32 section, slope
+point estimates from the criterion job log: add
+42.15 ns; cancel 20.90 ns; best bid and ask 10.83
+ns; amend 24.35 ns; mass cancel 72.22 ns per
+order (57.77 us per call, the batch of 800 proven
+from the throughput line); sweep 18.12 us; depth
+479.33 ns; WAL append 30.77 ns per frame (2.1794
+GiB/s); recovery 359.22 us (955.75 MiB/s);
+recovery from reader 379.29 us (905.17 MiB/s);
+snapshot round trip 2.23 ms (405.13 MiB/s). No
+core code changed since the programme 26 pass,
+and no performance verdict is claimed across
+passes. AW2 closes the programme.

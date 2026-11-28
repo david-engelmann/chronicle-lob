@@ -43,6 +43,10 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md opens programme 32 and records
+  the PERFORMANCE refresh in PERFORMANCE.md:
+  run 46105905131 at 4f677eed, add 42.15 ns,
+  WAL append 2.1794 GiB/s (lane AW1).
 - docs/ROADMAP.md closes programme 31: the
   seventh deep mutation exercise is landed at
   34bf45f2 (PR #117), seed 70009, clean.
