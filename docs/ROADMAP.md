@@ -1792,3 +1792,11 @@ snapshot round trip 2.23 ms (405.13 MiB/s). No
 core code changed since the programme 26 pass,
 and no performance verdict is claimed across
 passes. AW2 closes the programme.
+
+AW1 outcome: the refresh landed at ff165125
+(PR #119). The baseline stands current at the
+post-wave tree.
+
+Programme 32 is complete: AW1 landed at ff165125
+(PR #119), and this closure record is AW2. The AW
+set held one lane and it is closed.
