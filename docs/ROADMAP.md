@@ -1731,3 +1731,11 @@ resolve in the source tree, zero broken. External
 references stay confined to the project's own
 domains, now including its Pages host. AU2 closes
 the programme.
+
+AU1 outcome: the post-wave audit record landed at
+bd29e99d (PR #115). The tree the waves produced
+stands linked and gated.
+
+Programme 30 is complete: AU1 landed at bd29e99d
+(PR #115), and this closure record is AU2. The AU
+set held one lane and it is closed.
