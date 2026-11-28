@@ -1693,3 +1693,14 @@ verify-published.yml is re-pinned in this lane
 from 0.3.1 to 0.3.3, the current published
 version, so the Monday run verifies what users
 actually install. AT2 closes the programme.
+
+AT1 outcome: the record and re-pin landed at
+a7823237 (PR #112), and the proof dispatch of
+verify-published at the 0.3.3 pin (run 46086960272
+at a7823237) completed success on both jobs, so
+the Monday schedule now verifies the current
+release.
+
+Programme 29 is complete: AT1 landed at a7823237
+(PR #112), and this closure record is AT2. The AT
+set held one lane and it is closed.
