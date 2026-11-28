@@ -1899,3 +1899,10 @@ snapshot header readers), and the CLI's bench
 --json flag alone has no SDK counterpart because
 the SDK returns the object. AZ2 closes the
 programme.
+
+AZ1 outcome: the parity record landed at de5b6dea
+(PR #125). Parity holds at 0.3.3 with no gaps.
+
+Programme 35 is complete: AZ1 landed at de5b6dea
+(PR #125), and this closure record is AZ2. The AZ
+set held one lane and it is closed.
