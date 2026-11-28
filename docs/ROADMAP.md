@@ -1739,3 +1739,23 @@ stands linked and gated.
 Programme 30 is complete: AU1 landed at bd29e99d
 (PR #115), and this closure record is AU2. The AU
 set held one lane and it is closed.
+
+## Programme 31: the AV set (opened 2026-11-27)
+
+The deep mutation exercise rotation: the seventh
+exercise on record, at the tree the release waves
+left.
+
+### Lane AV1: run the deep exercise again
+
+Exercise: CLEAN. The mutation-deep dispatch at
+2a682c6a (run 46098557781) completed success;
+verified from the job log, the seed in force was
+70009 and the case volume 100,000, and the suite
+passed in full, fifteen tests. No panic, no
+convicted input mishandled, no repair required.
+Deep exercises on record, all clean: 44174348705,
+44196756726 (seed 70002), 45534405839 (seed
+70005), 45650240040 (seed 70006), 45713933476
+(seed 70007), 45933787610 (seed 70008), and this
+run (seed 70009). AV2 closes the programme.
