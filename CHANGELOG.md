@@ -43,6 +43,9 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md closes programme 35: the
+  parity re-audit is landed at de5b6dea
+  (PR #125), parity holding at 0.3.3.
 - docs/ROADMAP.md opens programme 35 and records
   the surface-parity re-audit at 0.3.3: six
   subcommands matched one-to-one, parity holds,
