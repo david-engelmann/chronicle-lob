@@ -1872,3 +1872,30 @@ proven on every channel, completions included.
 Programme 34 is complete: AY1 landed at da944474
 (PR #123), and this closure record is AY2. The AY
 set held one lane and it is closed.
+
+## Programme 35: the AZ set (opened 2026-11-28)
+
+The surface-parity re-audit: programme 25's pass
+repeated at 0.3.3, against the grown surface.
+
+### Lane AZ1: audit the parity again
+
+Verdict: parity holds at 0.3.3, no gaps. The
+CLI's six subcommands (replay, verify, snapshot,
+checkpoint, bench, completions) map one-to-one
+onto the SDK's six functions of the same names;
+the completions pair is the one growth since the
+0.3.0 audit and it matches itself. The five book
+configuration flags on the four file subcommands
+map one-to-one onto BookSpec's five fields,
+unchanged; the wal, base snapshot, and out
+inputs match their SDK parameters on every file
+command, and bench's ops and seed match its
+parameters. The by-design asymmetries stand as
+programme 25 recorded them, extended by the
+0.3.1 decoders: the SDK alone writes logs and
+decodes them (WalBuilder, crc32c, the frame and
+snapshot header readers), and the CLI's bench
+--json flag alone has no SDK counterpart because
+the SDK returns the object. AZ2 closes the
+programme.

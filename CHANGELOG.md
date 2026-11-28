@@ -43,6 +43,10 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md opens programme 35 and records
+  the surface-parity re-audit at 0.3.3: six
+  subcommands matched one-to-one, parity holds,
+  no gaps (lane AZ1).
 - docs/ROADMAP.md closes programme 34: the 0.3.3
   stranger proof is landed at da944474
   (PR #123), all proofs passing.
