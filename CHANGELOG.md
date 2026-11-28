@@ -43,6 +43,9 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md closes programme 34: the 0.3.3
+  stranger proof is landed at da944474
+  (PR #123), all proofs passing.
 - docs/ROADMAP.md opens programme 34 and records
   the 0.3.3 stranger proof: binary and SDK match
   figure for figure, and the completions surface
