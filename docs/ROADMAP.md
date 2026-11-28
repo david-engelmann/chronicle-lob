@@ -1704,3 +1704,30 @@ release.
 Programme 29 is complete: AT1 landed at a7823237
 (PR #112), and this closure record is AT2. The AT
 set held one lane and it is closed.
+
+## Programme 30: the AU set (opened 2026-11-27)
+
+The post-wave links audit: programme 27's pass
+repeated against the tree the 0.3.2 and 0.3.3
+waves produced, handbook included.
+
+### Lane AU1: audit every reference again
+
+Verdict: clean, with a method note that stands
+for future passes. Twenty-seven markdown files
+audited at f2321bfa, 51 relative references.
+Thirteen references, all inside book/src, point
+at docs pages and media that do not exist in the
+source tree; they resolve at build time, because
+the docs workflow stages them with
+book/sync-docs.sh into the gitignored
+book/src/docs before mdbook build, and the book
+runs mdbook-linkcheck as an erroring dead-link
+gate, green at a7823237. A source-tree resolution
+check therefore false-positives on this repo's
+book from now on; the staged tree is the correct
+resolution base. The remaining 38 references
+resolve in the source tree, zero broken. External
+references stay confined to the project's own
+domains, now including its Pages host. AU2 closes
+the programme.
