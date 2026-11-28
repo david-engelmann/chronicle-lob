@@ -1800,3 +1800,28 @@ post-wave tree.
 Programme 32 is complete: AW1 landed at ff165125
 (PR #119), and this closure record is AW2. The AW
 set held one lane and it is closed.
+
+## Programme 33: the AX set (opened 2026-11-28)
+
+The INVARIANTS traceability re-audit: programme
+23's pass repeated against the post-wave tree.
+
+### Lane AX1: re-audit the traceability matrix
+
+Verdict: the matrix is sound, no repairs
+required. Fifty-three rows stand in
+docs/INVARIANTS.md at 3345be6b, the same count as
+programme 23. The candidate enforcement names
+extracted from the matrix's backticked references
+resolve verbatim in the sources, with one class
+of exception: the absent identifiers are the
+prohibited constructs the determinism rows ban
+(HashMap, HashSet, DefaultHasher, RandomState,
+SystemTime, Instant, thread_rng), whose absence
+from the corpus is the invariant holding, plus
+two path fragments from a backticked file path.
+The two descriptive names programme 23 classified
+stand as classified: crossed_book names the check
+inside debug_assert_invariants, which resolves,
+and level_count the counter read in assert_levels.
+AX2 closes the programme.
