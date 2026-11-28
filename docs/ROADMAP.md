@@ -1759,3 +1759,13 @@ Deep exercises on record, all clean: 44174348705,
 70005), 45650240040 (seed 70006), 45713933476
 (seed 70007), 45933787610 (seed 70008), and this
 run (seed 70009). AV2 closes the programme.
+
+AV1 outcome: the exercise record landed at
+34bf45f2 (PR #117), merged onto the docs-visuals
+head with the parent diff verified additions
+only. The seventh deep exercise stands clean on
+record.
+
+Programme 31 is complete: AV1 landed at 34bf45f2
+(PR #117), and this closure record is AV2. The AV
+set held one lane and it is closed.
