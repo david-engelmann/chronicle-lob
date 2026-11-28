@@ -1825,3 +1825,11 @@ stand as classified: crossed_book names the check
 inside debug_assert_invariants, which resolves,
 and level_count the counter read in assert_levels.
 AX2 closes the programme.
+
+AX1 outcome: the re-audit record landed at
+414efc11 (PR #121). The matrix stands sound at
+the post-wave tree.
+
+Programme 33 is complete: AX1 landed at 414efc11
+(PR #121), and this closure record is AX2. The AX
+set held one lane and it is closed.
