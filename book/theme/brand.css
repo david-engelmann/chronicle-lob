@@ -1,48 +1,50 @@
 :root {
-  --chronicle-ink: #151411;
-  --chronicle-paper: #f5f1e8;
-  --chronicle-card: #faf8f3;
-  --chronicle-stone: #efe6d9;
-  --chronicle-night: #121110;
-  --chronicle-ink-warm: #eae6dd;
-  --chronicle-signal: #c25e00;
-  --chronicle-signal-bright: #f59e0b;
+  --doc-ink: #0f172a;
+  --doc-bg-light: #ffffff;
+  --doc-side-light: #f8fafc;
+  --doc-rust-bg: #f8fafc;
+  --doc-rust-side: #f1f5f9;
+  --doc-bg-dark: #0c1118;
+  --doc-side-dark: #111823;
+  --doc-ink-dark: #e2e8f0;
+  --doc-link-light: #c25e00;
+  --doc-link-dark: #f59e0b;
 }
 
 .light {
-  --bg: var(--chronicle-paper);
-  --fg: var(--chronicle-ink);
-  --sidebar-bg: var(--chronicle-card);
-  --sidebar-fg: var(--chronicle-ink);
-  --links: var(--chronicle-signal);
-  --sidebar-active: var(--chronicle-signal);
+  --bg: var(--doc-bg-light);
+  --fg: var(--doc-ink);
+  --sidebar-bg: var(--doc-side-light);
+  --sidebar-fg: var(--doc-ink);
+  --links: var(--doc-link-light);
+  --sidebar-active: var(--doc-link-light);
 }
 
 .rust {
-  --bg: #f6f1e8;
-  --fg: var(--chronicle-ink);
-  --sidebar-bg: var(--chronicle-stone);
-  --sidebar-fg: var(--chronicle-ink);
-  --links: var(--chronicle-signal);
-  --sidebar-active: var(--chronicle-signal);
+  --bg: var(--doc-rust-bg);
+  --fg: var(--doc-ink);
+  --sidebar-bg: var(--doc-rust-side);
+  --sidebar-fg: var(--doc-ink);
+  --links: var(--doc-link-light);
+  --sidebar-active: var(--doc-link-light);
 }
 
 .ayu, .coal {
-  --bg: var(--chronicle-night);
-  --fg: var(--chronicle-ink-warm);
-  --sidebar-bg: #1a1917;
-  --sidebar-fg: var(--chronicle-ink-warm);
-  --links: var(--chronicle-signal-bright);
-  --sidebar-active: var(--chronicle-signal-bright);
+  --bg: var(--doc-bg-dark);
+  --fg: var(--doc-ink-dark);
+  --sidebar-bg: var(--doc-side-dark);
+  --sidebar-fg: var(--doc-ink-dark);
+  --links: var(--doc-link-dark);
+  --sidebar-active: var(--doc-link-dark);
 }
 
 .navy {
-  --bg: #161923;
-  --fg: var(--chronicle-ink-warm);
-  --sidebar-bg: #12151e;
-  --sidebar-fg: var(--chronicle-ink-warm);
-  --links: var(--chronicle-signal-bright);
-  --sidebar-active: var(--chronicle-signal-bright);
+  --bg: #0c1118;
+  --fg: var(--doc-ink-dark);
+  --sidebar-bg: #111823;
+  --sidebar-fg: var(--doc-ink-dark);
+  --links: var(--doc-link-dark);
+  --sidebar-active: var(--doc-link-dark);
 }
 
 body {
@@ -64,10 +66,20 @@ a {
   font-weight: 700;
 }
 
-.content h1 {
+.content h1, .content h2, .content h3 {
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-weight: 650;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.02em;
+}
+
+.ayu .theme-light-only,
+.coal .theme-light-only,
+.navy .theme-light-only {
+  display: none;
+}
+
+.light .theme-dark-only,
+.rust .theme-dark-only {
+  display: none;
 }
 
 #menu-bar .icon-button,
@@ -83,15 +95,6 @@ button.fa-copy {
   box-sizing: border-box;
   min-height: 44px;
   min-width: 44px;
-}
-
-a:hover,
-button:hover,
-summary:hover,
-#menu-bar .icon-button:hover,
-.theme-popup .theme:hover,
-.clip-button:hover {
-  outline: none;
 }
 
 a:focus-visible,
@@ -112,25 +115,13 @@ summary:focus-visible,
   overflow-x: auto;
 }
 
-pre,
-.mermaid {
+.content pre {
   max-width: 100%;
   overflow-x: auto;
+  border-radius: 8px;
 }
 
-.mermaid svg {
+.content img {
   max-width: 100%;
   height: auto;
-}
-
-.mermaid text {
-  fill: var(--fg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    transition-duration: 0.001ms !important;
-    animation-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
-  }
 }
