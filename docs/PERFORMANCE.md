@@ -268,6 +268,30 @@ since runner variance alone moves these numbers.
 | recovery from reader (5,000 frames) | 435.40 us (788.52 MiB/s) |
 | snapshot round trip (about 903 KB encoded) | 1.87 ms (481.98 MiB/s) |
 
+## Programme 32 pass (2026-11-27, AW1)
+
+Bench dispatch run 46105905131 at 4f677eed,
+criterion job 140858460736, slope point estimates:
+
+| Benchmark | Time | Throughput |
+| --- | --- | --- |
+| add (resting) | 42.15 ns | 23.73 Melem/s |
+| cancel | 20.90 ns | 47.85 Melem/s |
+| best bid and ask | 10.83 ns | 92.33 Melem/s |
+| amend (resting) | 24.35 ns | 41.08 Melem/s |
+| mass cancel (per order) | 72.22 ns | 13.85 Melem/s |
+| sweep (60 levels, 600 makers) | 18.12 us | 33.11 Melem/s |
+| depth (100 levels) | 479.33 ns | 208.62 Melem/s |
+| WAL append (one frame) | 30.77 ns | 2.1794 GiB/s |
+| recovery (5,000 frames) | 359.22 us | 955.75 MiB/s |
+| recovery from reader (5,000 frames) | 379.29 us | 905.17 MiB/s |
+| snapshot round trip | 2.23 ms | 405.13 MiB/s |
+
+No core code changed since the programme 26
+pass; the figures are recorded as the current
+baseline, and no performance verdict is claimed
+across passes.
+
 ## Refreshing the baseline
 
 Dispatch the benchmarks workflow (.github/workflows/bench.yml)
