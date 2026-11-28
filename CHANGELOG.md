@@ -43,6 +43,10 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md closes programme 29: the 0.3.2
+  and 0.3.3 record and the 0.3.3 re-pin are
+  landed at a7823237 (PR #112), proof dispatch
+  46086960272 successful.
 - docs/ROADMAP.md opens programme 29 and records
   the 0.3.2 and 0.3.3 releases, both fully
   published, and verify-published.yml is
