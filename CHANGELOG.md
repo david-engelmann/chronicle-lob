@@ -43,6 +43,10 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md opens programme 33 and records
+  the INVARIANTS traceability re-audit: 53 rows,
+  the matrix is sound, no repairs required
+  (lane AX1).
 - docs/ROADMAP.md closes programme 32: the
   PERFORMANCE refresh is landed at ff165125
   (PR #119) as the current baseline.
