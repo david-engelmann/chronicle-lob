@@ -43,6 +43,10 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md opens programme 31 and records
+  the seventh deep mutation exercise: run
+  46098557781 at 2a682c6a, seed 70009, clean,
+  fifteen tests passed (lane AV1).
 - docs/ROADMAP.md closes programme 30: the
   post-wave links audit is landed at bd29e99d
   (PR #115), clean under the book's staging
