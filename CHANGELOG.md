@@ -43,6 +43,10 @@ verification in `verify-published.yml`.
   pinned `actions/checkout` to `v7.0.1` across `.github/workflows/*.yml`, and
   updated `.github/workflows/verify-published.yml` pins to `0.3.1`.
 
+- docs/ROADMAP.md closes programme 30: the
+  post-wave links audit is landed at bd29e99d
+  (PR #115), clean under the book's staging
+  semantics.
 - docs/ROADMAP.md opens programme 30 and records
   the post-wave links audit: 27 files, 51
   references, clean under the book's staging
