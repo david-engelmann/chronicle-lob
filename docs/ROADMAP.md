@@ -1668,3 +1668,28 @@ proven on every channel, decoders included.
 Programme 28 is complete: AS1 landed at 64c49d9c
 (PR #106), AS2 at 4bc6f924 (PR #108), and this
 closure record is AS3. The AS set is closed.
+
+## Programme 29: the AT set (opened 2026-11-27)
+
+The 0.3.2 and 0.3.3 releases recorded, and
+verify-published brought current. Both releases
+were landed by the Antigravity side, which stood
+down on this programme's files throughout and
+handed the record and the re-pin to this seat.
+
+### Lane AT1: record both releases, re-pin
+
+State, verified from the outside: v0.3.2 landed
+at f180cefc (PR #107, shell completions and the
+SHA256SUMS-verifying installer) with its tag at
+that commit and its GitHub Release published with
+six assets. v0.3.3 landed at 36bb0143 (PR #109,
+the mdBook handbook, runnable examples, fuzz
+targets, and SLSA provenance) with its tag at
+that commit and its Release likewise published;
+an install.sh fix followed at f6f9416 (PR #110).
+crates.io and PyPI both stand at 0.3.3.
+verify-published.yml is re-pinned in this lane
+from 0.3.1 to 0.3.3, the current published
+version, so the Monday run verifies what users
+actually install. AT2 closes the programme.

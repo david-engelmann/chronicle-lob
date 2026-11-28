@@ -1,6 +1,6 @@
 name: verify-published
 
-# Proves the published 0.3.1 packages work the way a stranger
+# Proves the published 0.3.3 packages work the way a stranger
 # consumes them (docs/ROADMAP.md, direction calls DC-1 and DC-5).
 # Run by manual dispatch after a release, and weekly on a schedule
 # so a toolchain or registry change that breaks stranger consumption
@@ -32,8 +32,8 @@ jobs:
         run: |
           cargo new scratch-consumer
           cd scratch-consumer
-          cargo add chronicle-core@0.3.1
-          cargo add chronicle-wal@0.3.1
+          cargo add chronicle-core@0.3.3
+          cargo add chronicle-wal@0.3.3
       - name: Write the smoke program
         run: |
           cat > scratch-consumer/src/main.rs <<'EOF'
@@ -108,7 +108,7 @@ jobs:
       - name: Install pinned toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
       - name: Install chronicle-lob-cli from crates.io
-        run: cargo install chronicle-lob-cli --version 0.3.1 --root "$RUNNER_TEMP/chronicle-install"
+        run: cargo install chronicle-lob-cli --version 0.3.3 --root "$RUNNER_TEMP/chronicle-install"
       - name: Run the installed binary
         run: |
           "$RUNNER_TEMP/chronicle-install/bin/chronicle-cli" bench --ops 10000 --seed 1
@@ -121,7 +121,7 @@ jobs:
       - name: Install chronicle-lob from PyPI in a clean virtual environment
         run: |
           python3 -m venv "$RUNNER_TEMP/chronicle-pypi-venv"
-          "$RUNNER_TEMP/chronicle-pypi-venv/bin/python" -m pip install chronicle-lob==0.3.1
+          "$RUNNER_TEMP/chronicle-pypi-venv/bin/python" -m pip install chronicle-lob==0.3.3
           "$RUNNER_TEMP/chronicle-pypi-venv/bin/chronicle-cli" --version
       - name: Exercise SDK bench, WalBuilder, read_wal_frames, snapshot, and read_snapshot_header
         run: |
@@ -130,8 +130,8 @@ jobs:
           import tempfile
           import chronicle_lob
 
-          assert chronicle_lob.__version__ == "0.3.1", chronicle_lob.__version__
-          assert chronicle_lob.version() == "0.3.1", chronicle_lob.version()
+          assert chronicle_lob.__version__ == "0.3.3", chronicle_lob.__version__
+          assert chronicle_lob.version() == "0.3.3", chronicle_lob.version()
 
           bench_report = chronicle_lob.bench(ops=10_000, seed=42)
           assert bench_report.applied + bench_report.rejected == 10_000
